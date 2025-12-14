@@ -1,4 +1,5 @@
 import { Audio } from 'expo-av';
+import { Platform } from 'react-native';
 import { AudioContext } from 'react-native-audio-api';
 
 interface FrequencyInfo {
@@ -107,8 +108,8 @@ const FREQUENCY_MAP: Record<number, FrequencyInfo> = {
   },
   40: {
     frequency: 40,
-    description: '💫 Gamma Frequency',
-    benefits: '🎵 Higher cognitive function, perception',
+    description: '💫 Gamma Brainwave (MIT Research-Backed)',
+    benefits: '🎵 Peak cognition, memory enhancement, focus. Based on peer-reviewed MIT gamma entrainment studies showing cognitive benefits.',
     filename: '40hz.wav'
   },
   60: {
@@ -153,21 +154,45 @@ const FREQUENCY_MAP: Record<number, FrequencyInfo> = {
 // This remains as an empty map so older helper code can safely query it.
 const FREQUENCY_AUDIO_MODULES: Record<number, any> = {};
 
+// Waveform types supported by the oscillator
+export type WaveformType = 'sine' | 'square' | 'sawtooth' | 'triangle';
+
+export const WAVEFORM_OPTIONS: { type: WaveformType; label: string; icon: string; description: string }[] = [
+  { type: 'sine', label: 'Sine', icon: '〰️', description: 'Smooth, pure tone - best for meditation' },
+  { type: 'square', label: 'Square', icon: '⬜', description: 'Rich harmonics - energizing' },
+  { type: 'sawtooth', label: 'Sawtooth', icon: '📐', description: 'Bright, buzzy - stimulating' },
+  { type: 'triangle', label: 'Triangle', icon: '🔺', description: 'Soft harmonics - calming' }
+];
+
 export class FrequencyPlayer {
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private masterGain: GainNode | null = null;
   private oscillator: OscillatorNode | null = null;
+  private oscillatorGain: GainNode | null = null;
+  // Binaural beat oscillators
+  private carrierOsc: OscillatorNode | null = null;
+  private lfoOsc: OscillatorNode | null = null;
+  private carrierGain: GainNode | null = null;
   private sound: Audio.Sound | null = null;
   private isPlaying = false;
   private currentFrequency = 0;
+  private currentWaveform: WaveformType = 'sine';
   private analysisBuffer: Float32Array | null = null;
+  private stopTimeout: NodeJS.Timeout | null = null;
+  private initialized = false;
 
   constructor() {
     this.initialize();
   }
 
   async initialize() {
+    // Prevent double initialization
+    if (this.initialized) {
+      console.log('🔊 AudioContext already initialized, skipping');
+      return;
+    }
+    
     try {
       // Set up Expo Audio for mobile (background playback, silent mode)
       await Audio.setAudioModeAsync({
@@ -175,13 +200,14 @@ export class FrequencyPlayer {
         staysActiveInBackground: true,
         playsInSilentModeIOS: true,
         interruptionModeIOS: 0,
-        shouldDuckAndroid: true,
+        shouldDuckAndroid: false, // Don't let other apps duck our audio
         playThroughEarpieceAndroid: false,
       });
 
       // Set up AudioContext via react-native-audio-api on all platforms.
       if (!this.audioContext) {
         this.audioContext = new AudioContext();
+        console.log('🎧 New AudioContext created, state:', this.audioContext.state);
       }
 
       const ctx = this.audioContext;
@@ -196,8 +222,9 @@ export class FrequencyPlayer {
       this.masterGain = masterGain;
       this.analyser = analyser;
       this.analysisBuffer = new Float32Array(analyser.frequencyBinCount);
+      this.initialized = true;
 
-      console.log('🔊 AudioContext initialized via react-native-audio-api');
+      console.log(`🔊 AudioContext initialized: state=${ctx.state}, sampleRate=${ctx.sampleRate}`);
     } catch (error) {
       console.error('Audio initialization failed:', error);
     }
@@ -212,31 +239,84 @@ export class FrequencyPlayer {
     return this.audioContext !== null;
   }
 
-  async playFrequency(frequency: number, duration: number = 5000): Promise<void> {
+  async playFrequency(frequency: number, duration: number = 5000, waveform: WaveformType = 'sine'): Promise<void> {
     if (this.isPlaying) {
       await this.stop();
     }
 
-    this.currentFrequency = frequency;
-    console.log(`🎵 Playing ${frequency}Hz for ${duration/1000} seconds`);
+    // Frequency range validation and handling
+    // Human hearing: ~20Hz - 20kHz, most phone speakers: ~80-100Hz minimum
+    const MIN_AUDIBLE = 20;          // Below this, frequency is truly sub-audible
+    const SPEAKER_MIN = 80;          // Phone speakers can't reproduce below ~80Hz
+    const MAX_PRACTICAL = 15000;     // Most phone speakers can't produce above this
+    
+    // Clamp very high frequencies to practical speaker limits
+    let effectiveFreq = frequency;
+    if (frequency > MAX_PRACTICAL) {
+      console.log(`⚠️ ${frequency}Hz exceeds speaker limits, clamping to ${MAX_PRACTICAL}Hz`);
+      effectiveFreq = MAX_PRACTICAL;
+    }
+    
+    // For sub-audible frequencies (<20Hz), automatically use isochronic tones
+    if (frequency < MIN_AUDIBLE) {
+      console.log(`🧠 ${frequency}Hz is sub-audible, using isochronic modulation`);
+      await this.playBinauralBeat(200, frequency, duration); // 200Hz carrier pulsing at target rate
+      return;
+    }
+    
+    // For low frequencies (20-80Hz) that phone speakers can't reproduce well,
+    // use isochronic beats (carrier pulsing at target frequency) for brainwave entrainment
+    // This includes gamma waves (40Hz), low beta, and theta ranges
+    if (frequency >= MIN_AUDIBLE && frequency < SPEAKER_MIN) {
+      console.log(`🧠 ${frequency}Hz is below speaker range (~${SPEAKER_MIN}Hz), using isochronic entrainment for optimal effect`);
+      console.log(`📱 For raw ${frequency}Hz tone, use headphones. Playing as isochronic beat instead.`);
+      await this.playBinauralBeat(200, frequency, duration); // 200Hz carrier pulsing at target gamma/theta rate
+      return;
+    }
+
+    this.currentFrequency = effectiveFreq;
+    this.currentWaveform = waveform;
+    console.log(`🎵 Playing ${effectiveFreq}Hz ${waveform} wave for ${duration/1000} seconds`);
 
     try {
-      await this.playWithWebAudio(frequency, duration);
+      await this.playWithWebAudio(effectiveFreq, duration, waveform);
     } catch (error) {
-      console.error(`Failed to play frequency ${frequency}:`, error);
-      this.simulateWithRichFeedback(frequency, duration);
+      console.error(`Failed to play frequency ${effectiveFreq}:`, error);
+      this.simulateWithRichFeedback(effectiveFreq, duration);
     }
+  }
+
+  setWaveform(waveform: WaveformType): void {
+    this.currentWaveform = waveform;
+    // If currently playing, update the oscillator type
+    if (this.oscillator && this.isPlaying) {
+      this.oscillator.type = waveform;
+      console.log(`🎛️ Waveform changed to ${waveform}`);
+    }
+  }
+
+  getWaveform(): WaveformType {
+    return this.currentWaveform;
   }
 
   private async playWithWebAudio(
     frequency: number,
-    duration: number
+    duration: number,
+    waveform: WaveformType = 'sine'
   ): Promise<void> {
     if (!this.audioContext || !this.masterGain) return;
 
+    // Clear any existing stop timeout
+    if (this.stopTimeout) {
+      clearTimeout(this.stopTimeout);
+      this.stopTimeout = null;
+    }
+
     // Resume context if suspended (required for user interaction)
     if (this.audioContext.state === 'suspended') {
+      console.log('🎧 Resuming suspended AudioContext...');
       await this.audioContext.resume();
+      console.log('🎧 AudioContext resumed, state:', this.audioContext.state);
     }
 
     this.isPlaying = true;
@@ -244,36 +324,57 @@ export class FrequencyPlayer {
     // Create oscillator routed through master gain/analyser chain
     this.oscillator = this.audioContext.createOscillator();
     const gainNode = this.audioContext.createGain();
+    this.oscillatorGain = gainNode;
 
     this.oscillator.frequency.setValueAtTime(
       frequency,
       this.audioContext.currentTime
     );
-    this.oscillator.type = 'sine';
+    this.oscillator.type = waveform;
+
+    // Adjust gain based on waveform (non-sine waves are louder due to harmonics)
+    const baseGain = waveform === 'sine' ? 0.3 : 0.15;
+
+    // Calculate fade times (minimum duration of 0.3s for fades)
+    const fadeTime = Math.min(0.1, duration / 1000 / 4);
+    const durationSec = duration / 1000;
 
     // Smooth fade in and out
     gainNode.gain.setValueAtTime(0, this.audioContext.currentTime);
     gainNode.gain.linearRampToValueAtTime(
-      0.3,
-      this.audioContext.currentTime + 0.1
+      baseGain,
+      this.audioContext.currentTime + fadeTime
     );
-    gainNode.gain.linearRampToValueAtTime(
-      0,
-      this.audioContext.currentTime + duration / 1000 - 0.1
-    );
+    
+    // Only add fade out if duration is long enough
+    if (durationSec > fadeTime * 2) {
+      gainNode.gain.setValueAtTime(
+        baseGain,
+        this.audioContext.currentTime + durationSec - fadeTime
+      );
+      gainNode.gain.linearRampToValueAtTime(
+        0,
+        this.audioContext.currentTime + durationSec
+      );
+    }
 
     this.oscillator.connect(gainNode);
     gainNode.connect(this.masterGain);
 
     this.oscillator.start();
-    this.oscillator.stop(
-      this.audioContext.currentTime + duration / 1000
-    );
+    
+    console.log(`🔊 Synth: Playing ${frequency}Hz ${waveform === 'sine' ? '〰️' : waveform === 'square' ? '⬜' : waveform === 'sawtooth' ? '📐' : '🔺'} ${waveform} wave, gain=${baseGain}, ctx.state=${this.audioContext.state}`);
+    
+    // Schedule oscillator stop (this handles the actual audio stopping)
+    this.oscillator.stop(this.audioContext.currentTime + durationSec);
 
-    console.log(`🔊 Synth: Playing ${frequency}Hz sine wave`);
-
-    // Auto-stop after duration
-    setTimeout(() => this.stop(), duration);
+    // Clean up state after duration (but don't call stop() which would try to stop again)
+    this.stopTimeout = setTimeout(() => {
+      this.isPlaying = false;
+      this.oscillator = null;
+      this.oscillatorGain = null;
+      console.log('🏁 Playback complete');
+    }, duration);
   }
 
   private async playWithExpoAudio(
@@ -360,76 +461,201 @@ export class FrequencyPlayer {
   }
 
   async stop(): Promise<void> {
+    // Don't do anything if not actually playing
+    if (!this.isPlaying && !this.oscillator && !this.carrierOsc && !this.stopTimeout) {
+      return;
+    }
+
+    // Clear any pending stop timeout
+    if (this.stopTimeout) {
+      clearTimeout(this.stopTimeout);
+      this.stopTimeout = null;
+    }
+
     this.isPlaying = false;
 
-    // Stop Web Audio
+    // Stop regular oscillator
     if (this.oscillator) {
       try {
-        this.oscillator.stop();
+        // Fade out quickly to avoid click
+        if (this.oscillatorGain && this.audioContext) {
+          this.oscillatorGain.gain.cancelScheduledValues(this.audioContext.currentTime);
+          this.oscillatorGain.gain.setValueAtTime(
+            this.oscillatorGain.gain.value,
+            this.audioContext.currentTime
+          );
+          this.oscillatorGain.gain.linearRampToValueAtTime(
+            0,
+            this.audioContext.currentTime + 0.05
+          );
+        }
+        this.oscillator.stop(this.audioContext ? this.audioContext.currentTime + 0.05 : 0);
         this.oscillator.disconnect();
       } catch (error) {
-        console.log('Oscillator already stopped');
+        // Oscillator may have already stopped - this is fine
       }
       this.oscillator = null;
+      this.oscillatorGain = null;
+    }
+
+    // Stop binaural/isochronic oscillators
+    if (this.carrierOsc) {
+      try {
+        // Fade out carrier
+        if (this.carrierGain && this.audioContext) {
+          this.carrierGain.gain.cancelScheduledValues(this.audioContext.currentTime);
+          this.carrierGain.gain.linearRampToValueAtTime(
+            0,
+            this.audioContext.currentTime + 0.05
+          );
+        }
+        this.carrierOsc.stop(this.audioContext ? this.audioContext.currentTime + 0.05 : 0);
+        this.carrierOsc.disconnect();
+      } catch (error) {
+        // Oscillator may have already stopped
+      }
+      this.carrierOsc = null;
+      this.carrierGain = null;
+    }
+
+    if (this.lfoOsc) {
+      try {
+        this.lfoOsc.stop(this.audioContext ? this.audioContext.currentTime + 0.05 : 0);
+        this.lfoOsc.disconnect();
+      } catch (error) {
+        // Oscillator may have already stopped
+      }
+      this.lfoOsc = null;
+    }
+
+    // Stop bath oscillators (multiple layered frequencies)
+    const bathOscs = (this as any)._bathOscillators;
+    const bathGains = (this as any)._bathGains;
+    if (bathOscs && Array.isArray(bathOscs)) {
+      for (const osc of bathOscs) {
+        try {
+          osc.stop(this.audioContext ? this.audioContext.currentTime + 0.05 : 0);
+          osc.disconnect();
+        } catch (error) {
+          // Already stopped
+        }
+      }
+      (this as any)._bathOscillators = null;
+    }
+    if (bathGains && Array.isArray(bathGains)) {
+      for (const gain of bathGains) {
+        try {
+          if (this.audioContext) {
+            gain.gain.cancelScheduledValues(this.audioContext.currentTime);
+            gain.gain.linearRampToValueAtTime(0, this.audioContext.currentTime + 0.05);
+          }
+        } catch (error) {
+          // Already disconnected
+        }
+      }
+      (this as any)._bathGains = null;
     }
 
     console.log('🛑 Audio stopped');
   }
 
-  async playBinauralBeat(leftFreq: number, rightFreq: number, duration: number = 5000) {
-    console.log(`🎧 Binaural Beat: ${leftFreq}Hz (L) / ${rightFreq}Hz (R) for ${duration/1000}s`);
+  /**
+   * Play an isochronic/binaural beat for brainwave entrainment
+   * @param carrierFreq - The audible carrier frequency (e.g., 200Hz)
+   * @param beatFreq - The brainwave entrainment frequency (e.g., 4Hz for theta)
+   * @param duration - Duration in milliseconds
+   */
+  async playBinauralBeat(carrierFreq: number, beatFreq: number, duration: number = 5000) {
+    // Stop any currently playing audio first
+    if (this.isPlaying) {
+      await this.stop();
+    }
+    
+    console.log(`🎧 Brainwave Entrainment: ${carrierFreq}Hz carrier, ${beatFreq}Hz beat for ${duration/1000}s`);
 
     // Use the unified AudioContext path on all platforms.
-    this.playBinauralWithWebAudio(leftFreq, rightFreq, duration);
+    this.playIsochronicBeat(carrierFreq, beatFreq, duration);
   }
 
-  private playBinauralWithWebAudio(leftFreq: number, rightFreq: number, duration: number) {
-    if (!this.audioContext) return;
+  private playIsochronicBeat(carrierFreq: number, beatFreq: number, duration: number) {
+    if (!this.audioContext || !this.masterGain) return;
+
+    // Clear any existing stop timeout
+    if (this.stopTimeout) {
+      clearTimeout(this.stopTimeout);
+      this.stopTimeout = null;
+    }
 
     try {
       if (this.audioContext.state === 'suspended') {
         this.audioContext.resume();
       }
 
-      // Create stereo merger
-      const merger = this.audioContext.createChannelMerger(2);
-      const finalGain = this.audioContext.createGain();
+      // Isochronic tones: A carrier frequency that pulses on/off at the beat frequency
+      // This creates a perceivable rhythmic pattern that entrains brainwaves
+      
+      // Primary carrier oscillator - store as class property for stop()
+      this.carrierOsc = this.audioContext.createOscillator();
+      this.carrierGain = this.audioContext.createGain();
+      this.carrierOsc.frequency.setValueAtTime(carrierFreq, this.audioContext.currentTime);
+      this.carrierOsc.type = 'sine';
 
-      // Left ear oscillator
-      const leftOsc = this.audioContext.createOscillator();
-      const leftGain = this.audioContext.createGain();
-      leftOsc.frequency.setValueAtTime(leftFreq, this.audioContext.currentTime);
-      leftOsc.type = 'sine';
-      leftGain.gain.setValueAtTime(0.05, this.audioContext.currentTime);
+      // LFO for amplitude modulation at beat frequency - store as class property
+      this.lfoOsc = this.audioContext.createOscillator();
+      const lfoGain = this.audioContext.createGain();
+      this.lfoOsc.frequency.setValueAtTime(beatFreq, this.audioContext.currentTime);
+      // Use sine for smoother pulses (less harsh than square)
+      this.lfoOsc.type = 'sine';
+      
+      // Higher modulation depth for more pronounced pulses (0.4 = 80% volume swing)
+      lfoGain.gain.setValueAtTime(0.4, this.audioContext.currentTime);
 
-      // Right ear oscillator
-      const rightOsc = this.audioContext.createOscillator();
-      const rightGain = this.audioContext.createGain();
-      rightOsc.frequency.setValueAtTime(rightFreq, this.audioContext.currentTime);
-      rightOsc.type = 'sine';
-      rightGain.gain.setValueAtTime(0.05, this.audioContext.currentTime);
+      // Route LFO to carrier gain (AM synthesis)
+      this.lfoOsc.connect(lfoGain);
+      lfoGain.connect(this.carrierGain.gain);
 
-      // Connect to stereo channels
-      leftOsc.connect(leftGain);
-      rightOsc.connect(rightGain);
-      leftGain.connect(merger, 0, 0); // Left channel
-      rightGain.connect(merger, 0, 1); // Right channel
-      merger.connect(finalGain);
-      finalGain.connect(this.audioContext.destination);
+      // Base carrier level (0.5 so pulses range from 0.1 to 0.9)
+      this.carrierGain.gain.setValueAtTime(0.5, this.audioContext.currentTime);
 
-      // Start oscillators
+      // Connect carrier to output
+      this.carrierOsc.connect(this.carrierGain);
+      this.carrierGain.connect(this.masterGain);
+
+      // Start both oscillators
       const currentTime = this.audioContext.currentTime;
-      leftOsc.start(currentTime);
-      rightOsc.start(currentTime);
-      leftOsc.stop(currentTime + duration / 1000);
-      rightOsc.stop(currentTime + duration / 1000);
+      const durationSec = duration / 1000;
+      this.carrierOsc.start(currentTime);
+      this.lfoOsc.start(currentTime);
+      this.carrierOsc.stop(currentTime + durationSec);
+      this.lfoOsc.stop(currentTime + durationSec);
 
       this.isPlaying = true;
-      console.log(`🎧 True binaural beat: ${leftFreq}Hz (L) / ${rightFreq}Hz (R)`);
-      console.log(`🧠 Beat frequency: ${Math.abs(rightFreq - leftFreq)}Hz`);
+      this.currentFrequency = beatFreq; // Track the brainwave frequency
+      
+      // Helpful brainwave state descriptions
+      let brainwaveState = '';
+      if (beatFreq <= 4) brainwaveState = 'Delta (deep sleep/healing)';
+      else if (beatFreq <= 8) brainwaveState = 'Theta (meditation/creativity)';
+      else if (beatFreq <= 12) brainwaveState = 'Alpha (relaxation/learning)';
+      else if (beatFreq <= 30) brainwaveState = 'Beta (focus/alertness)';
+      else brainwaveState = 'Gamma (peak awareness)';
+      
+      console.log(`🧠 Isochronic Beat: ${carrierFreq}Hz carrier pulsing at ${beatFreq}Hz`);
+      console.log(`🌊 Target brainwave: ${brainwaveState}`);
+
+      // Clean up state after duration (oscillators auto-stop, just update state)
+      if (this.stopTimeout) clearTimeout(this.stopTimeout);
+      this.stopTimeout = setTimeout(() => {
+        this.isPlaying = false;
+        this.carrierOsc = null;
+        this.lfoOsc = null;
+        this.carrierGain = null;
+        console.log('🏁 Binaural beat complete');
+      }, duration);
     } catch (error) {
       console.error('Binaural audio error:', error);
-      this.simulatePlayback((leftFreq + rightFreq) / 2, duration);
+      // Fallback: simulate with carrier frequency
+      this.simulatePlayback(carrierFreq, duration);
     }
   }
 
@@ -526,11 +752,26 @@ export class FrequencyPlayer {
   }
 }
 
-// Singleton instance
-const frequencyPlayer = new FrequencyPlayer();
+// Singleton instance - persists across hot reloads using global
+declare const global: any;
 
-// Initialize when imported
-frequencyPlayer.initialize();
+const MODULE_LOAD_ID = Math.random().toString(36).substring(7);
+console.log(`📦 audioEngine module loading, ID: ${MODULE_LOAD_ID}`);
+
+function getFrequencyPlayer(): FrequencyPlayer {
+  // Store on global to survive hot reloads
+  if (!global.__HEALTONE_FREQUENCY_PLAYER__) {
+    console.log(`📦 Creating new FrequencyPlayer (module ${MODULE_LOAD_ID})`);
+    global.__HEALTONE_FREQUENCY_PLAYER__ = new FrequencyPlayer();
+  } else {
+    console.log(`📦 Reusing existing FrequencyPlayer (module ${MODULE_LOAD_ID})`);
+  }
+  return global.__HEALTONE_FREQUENCY_PLAYER__;
+}
+
+const frequencyPlayer = getFrequencyPlayer();
+
+// Don't call initialize again - constructor already does it
 
 // Helper functions for common frequency types
 export const playHealingFrequency = (frequency: number, duration: number = 5000) => {
@@ -545,10 +786,8 @@ export const playChakraFrequency = (frequency: number, duration: number = 5000) 
   return frequencyPlayer.playFrequency(frequency, duration);
 };
 
-export const playBinauralBeat = (baseFreq: number, beatFreq: number, duration: number = 5000) => {
-  const leftFreq = baseFreq;
-  const rightFreq = baseFreq + beatFreq;
-  return frequencyPlayer.playBinauralBeat(leftFreq, rightFreq, duration);
+export const playBinauralBeat = (carrierFreq: number, beatFreq: number, duration: number = 5000) => {
+  return frequencyPlayer.playBinauralBeat(carrierFreq, beatFreq, duration);
 };
 
 export const stopAllFrequencies = () => {
@@ -558,8 +797,35 @@ export const stopAllFrequencies = () => {
 export const testAudio = async () => {
   console.log('🧪 TESTING AUDIO SYSTEM...');
   console.log('🔊 AudioContext present:', !!frequencyPlayer['audioContext']);
-  console.log('🔊 Playing 440Hz test tone for 2 seconds...');
-  await frequencyPlayer.playFrequency(440, 2000);
+  
+  // Try direct, simple oscillator test
+  const ctx = frequencyPlayer['audioContext'];
+  if (ctx) {
+    console.log(`🧪 Context state: ${ctx.state}, sampleRate: ${ctx.sampleRate}`);
+    
+    if (ctx.state === 'suspended') {
+      await ctx.resume();
+      console.log('🧪 Context resumed, new state:', ctx.state);
+    }
+    
+    // Direct oscillator test - bypass all abstraction
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    
+    osc.frequency.setValueAtTime(440, ctx.currentTime);
+    osc.type = 'sine';
+    gain.gain.setValueAtTime(0.5, ctx.currentTime); // High volume
+    
+    osc.connect(gain);
+    gain.connect(ctx.destination); // Direct to destination
+    
+    console.log('🧪 Starting direct oscillator test (440Hz, 0.5 gain, direct to destination)...');
+    osc.start();
+    osc.stop(ctx.currentTime + 2);
+    
+    console.log('🧪 Direct test started - you should hear 440Hz beep for 2 seconds');
+  }
+  
   console.log('🧪 AUDIO TEST COMPLETE');
 };
 
@@ -567,5 +833,134 @@ export const getAnalysisSnapshot = () => {
   return frequencyPlayer.getAnalysisSnapshot();
 };
 
+/**
+ * Play a frequency bath (multiple layered frequencies)
+ * Each frequency is played simultaneously at reduced volume to create harmonious layering
+ * @param frequencies - Array of Hz values to layer together
+ * @param duration - Duration in milliseconds
+ */
+export const playFrequencyBath = async (frequencies: number[], duration: number = 30 * 60 * 1000) => {
+  // Stop any currently playing audio
+  await frequencyPlayer.stop();
+  
+  if (!frequencyPlayer['audioContext'] || !frequencyPlayer['masterGain']) {
+    console.error('Audio not initialized');
+    return;
+  }
+  
+  const ctx = frequencyPlayer['audioContext'];
+  const masterGain = frequencyPlayer['masterGain'];
+  
+  // Resume context if suspended
+  if (ctx.state === 'suspended') {
+    await ctx.resume();
+  }
+  
+  console.log(`🛁 Playing bath with ${frequencies.length} frequencies: [${frequencies.join(', ')}]Hz`);
+  
+  // Create an array to track all oscillators for this bath
+  const oscillators: OscillatorNode[] = [];
+  const gains: GainNode[] = [];
+  
+  // Calculate volume per oscillator (divide evenly, with reduction to avoid clipping)
+  const volumePerOsc = 0.25 / frequencies.length;
+  
+  const currentTime = ctx.currentTime;
+  const durationSec = duration / 1000;
+  const fadeTime = 0.15;
+  
+  for (const freq of frequencies) {
+    // Handle sub-audible frequencies differently
+    if (freq < 20) {
+      // For sub-audible frequencies in baths, use AM synthesis
+      const carrier = ctx.createOscillator();
+      const lfo = ctx.createOscillator();
+      const carrierGain = ctx.createGain();
+      const lfoGain = ctx.createGain();
+      
+      // Carrier at 200Hz, modulated at brainwave frequency
+      carrier.frequency.setValueAtTime(200, currentTime);
+      carrier.type = 'sine';
+      
+      lfo.frequency.setValueAtTime(freq, currentTime);
+      lfo.type = 'sine';
+      lfoGain.gain.setValueAtTime(0.3, currentTime);
+      
+      lfo.connect(lfoGain);
+      lfoGain.connect(carrierGain.gain);
+      
+      // Fade in
+      carrierGain.gain.setValueAtTime(0, currentTime);
+      carrierGain.gain.linearRampToValueAtTime(volumePerOsc * 0.5, currentTime + fadeTime);
+      
+      carrier.connect(carrierGain);
+      carrierGain.connect(masterGain);
+      
+      carrier.start(currentTime);
+      lfo.start(currentTime);
+      carrier.stop(currentTime + durationSec);
+      lfo.stop(currentTime + durationSec);
+      
+      oscillators.push(carrier, lfo);
+      gains.push(carrierGain);
+    } else {
+      // For audible frequencies, clamp if needed and play directly
+      let effectiveFreq = freq;
+      if (freq > 15000) {
+        effectiveFreq = 15000;
+        console.log(`⚠️ Clamping ${freq}Hz to 15000Hz for bath`);
+      }
+      
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      
+      osc.frequency.setValueAtTime(effectiveFreq, currentTime);
+      osc.type = 'sine';
+      
+      // Fade in
+      gain.gain.setValueAtTime(0, currentTime);
+      gain.gain.linearRampToValueAtTime(volumePerOsc, currentTime + fadeTime);
+      
+      // Fade out
+      if (durationSec > fadeTime * 2) {
+        gain.gain.setValueAtTime(volumePerOsc, currentTime + durationSec - fadeTime);
+        gain.gain.linearRampToValueAtTime(0, currentTime + durationSec);
+      }
+      
+      osc.connect(gain);
+      gain.connect(masterGain);
+      
+      osc.start(currentTime);
+      osc.stop(currentTime + durationSec);
+      
+      oscillators.push(osc);
+      gains.push(gain);
+    }
+  }
+  
+  // Store oscillators for cleanup on stop
+  // We'll use the first oscillator for the main reference
+  if (oscillators.length > 0) {
+    frequencyPlayer['oscillator'] = oscillators[0];
+    frequencyPlayer['oscillatorGain'] = gains[0];
+    frequencyPlayer['isPlaying'] = true;
+    
+    // Store additional oscillators for cleanup
+    (frequencyPlayer as any)._bathOscillators = oscillators;
+    (frequencyPlayer as any)._bathGains = gains;
+  }
+  
+  // Set timeout to clean up state
+  const timeout = setTimeout(() => {
+    frequencyPlayer['isPlaying'] = false;
+    frequencyPlayer['oscillator'] = null;
+    frequencyPlayer['oscillatorGain'] = null;
+    (frequencyPlayer as any)._bathOscillators = null;
+    (frequencyPlayer as any)._bathGains = null;
+    console.log('🛁 Bath complete');
+  }, duration);
+  
+  frequencyPlayer['stopTimeout'] = timeout;
+};
 // Export the singleton instance
 export { frequencyPlayer };

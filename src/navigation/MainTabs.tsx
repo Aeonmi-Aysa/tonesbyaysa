@@ -2,6 +2,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Feather } from '@expo/vector-icons';
 import { DashboardScreen } from '@/screens/main/DashboardScreen';
 import { ComposerScreen } from '@/screens/main/ComposerScreen';
+import { FavoritesScreen } from '@/screens/main/FavoritesScreen';
 import { ManifestationScreen } from '@/screens/main/ManifestationScreen';
 import { ProfileScreen } from '@/screens/main/ProfileScreen';
 import { AdminScreen } from '@/screens/main/AdminScreen';
@@ -11,7 +12,8 @@ import { useMemo } from 'react';
 export type MainTabParamList = {
   Dashboard: undefined;
   Composer: undefined;
-  Manifestation: undefined;
+  Manifest: undefined;
+  Favorites: undefined;
   Profile: undefined;
   Admin: undefined;
 };
@@ -53,10 +55,17 @@ export function MainTabs() {
         }}
       />
       <Tab.Screen
-        name="Manifestation"
+        name="Manifest"
         component={ManifestationScreen}
         options={{
           tabBarIcon: ({ color }: { color: string }) => renderIcon('star')(color)
+        }}
+      />
+      <Tab.Screen
+        name="Favorites"
+        component={FavoritesScreen}
+        options={{
+          tabBarIcon: ({ color }: { color: string }) => renderIcon('heart')(color)
         }}
       />
       <Tab.Screen

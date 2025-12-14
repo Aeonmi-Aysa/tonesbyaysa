@@ -1,213 +1,748 @@
-import { useState } from 'react';
-import { Alert, FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View, Animated } from 'react-native';
 import { useSessionStore, type SessionState } from '@/store/useSessionStore';
+import { useFavoritesStore } from '@/store/useFavoritesStore';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { stopAllFrequencies, playFrequencyBath } from '@/lib/audioEngine';
+import { FREQUENCY_BATHS, type FrequencyBath } from '@/lib/frequencies';
 
-interface Affirmation {
-  id: string;
-  text: string;
-  category: 'health' | 'wealth' | 'love' | 'success' | 'custom';
-  isActive: boolean;
+// Types
+interface Intention {
+  title: string;
+  category: 'abundance' | 'love' | 'health' | 'career' | 'spiritual' | 'creativity';
+  description: string;
+  intensity: number;
+  updatedAt: string;
 }
 
-const PRESET_AFFIRMATIONS: Omit<Affirmation, 'id' | 'isActive'>[] = [
-  { text: "I am perfectly healthy and full of vibrant energy", category: 'health' },
-  { text: "Every cell in my body radiates health and wellness", category: 'health' },
-  { text: "I attract abundance and prosperity into my life", category: 'wealth' },
-  { text: "Money flows to me easily and effortlessly", category: 'wealth' },
-  { text: "I am worthy of love and I give love freely", category: 'love' },
-  { text: "I attract loving, supportive relationships", category: 'love' },
-  { text: "I achieve my goals with ease and grace", category: 'success' },
-  { text: "Success comes naturally to me in all areas of life", category: 'success' },
+interface ManifestationStats {
+  sessions: number;
+  minutes: number;
+  streak: number;
+  intentions: number;
+}
+
+interface Achievement {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  check: (stats: ManifestationStats, intentions: number) => boolean;
+}
+
+interface CustomBath {
+  id: string;
+  name: string;
+  mode: 'blend' | 'sequence';
+  layers: Array<{ hz: number; duration: number; waveform: string }>;
+  savedAt: string;
+  isCustom: boolean;
+}
+
+interface ManifestationState {
+  currentIntention: Intention | null;
+  stats: ManifestationStats;
+  achievements: Record<string, boolean>;
+  lastSessionDate: string | null;
+}
+
+// Achievement catalog
+const ACHIEVEMENT_CATALOG: Achievement[] = [
+  {
+    id: 'first-intention',
+    name: 'Intention Initiate',
+    description: 'Set your first manifestation target.',
+    icon: '✨',
+    check: (stats, intentions) => intentions > 0
+  },
+  {
+    id: 'session-5',
+    name: 'Momentum Builder',
+    description: 'Complete 5 manifestation sessions.',
+    icon: '⚡',
+    check: (stats) => stats.sessions >= 5
+  },
+  {
+    id: 'streak-3',
+    name: 'Consistency Alchemist',
+    description: 'Maintain a 3-day streak.',
+    icon: '🔥',
+    check: (stats) => stats.streak >= 3
+  },
+  {
+    id: 'minutes-120',
+    name: 'Time Investor',
+    description: 'Spend 120 mindful minutes.',
+    icon: '⏱️',
+    check: (stats) => stats.minutes >= 120
+  },
+  {
+    id: 'session-25',
+    name: 'Master Manifestor',
+    description: 'Complete 25 sessions.',
+    icon: '👑',
+    check: (stats) => stats.sessions >= 25
+  },
+  {
+    id: 'streak-7',
+    name: 'Week Warrior',
+    description: '7-day manifestation streak.',
+    icon: '💫',
+    check: (stats) => stats.streak >= 7
+  }
 ];
+
+// Intention categories
+const INTENTION_CATEGORIES = [
+  { key: 'abundance' as const, label: 'Abundance', emoji: '💰' },
+  { key: 'love' as const, label: 'Love', emoji: '❤️' },
+  { key: 'health' as const, label: 'Health', emoji: '🌿' },
+  { key: 'career' as const, label: 'Career', emoji: '🎯' },
+  { key: 'spiritual' as const, label: 'Spiritual', emoji: '🧘' },
+  { key: 'creativity' as const, label: 'Creative', emoji: '🎨' },
+];
+
+// Recommended frequencies per category
+const CATEGORY_RECOMMENDATIONS: Record<string, string[]> = {
+  abundance: ['bath-abundance-flow', 'bath-infinite-prosperity', 'bath-opportunity-magnet'],
+  love: ['bath-self-love', 'bath-heart-opening', 'bath-emotional-healing'],
+  health: ['bath-rapid-recovery', 'bath-pain-dissolver', 'bath-immune-boost'],
+  career: ['bath-focus', 'bath-logic-reasoning', 'bath-mental-clarity'],
+  spiritual: ['bath-awakening-gateway', 'bath-quantum-creation', 'bath-chakra-alignment'],
+  creativity: ['bath-quantum-creation', 'bath-inspiration-flow', 'bath-creative-spark']
+};
+
+const STORAGE_KEY = 'manifestation_state';
 
 export function ManifestationScreen() {
   const profile = useSessionStore((state: SessionState) => state.profile);
-  const [affirmations, setAffirmations] = useState<Affirmation[]>(
-    PRESET_AFFIRMATIONS.map((aff, index) => ({
-      ...aff,
-      id: index.toString(),
-      isActive: false,
-    }))
-  );
-  const [newAffirmation, setNewAffirmation] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<'health' | 'wealth' | 'love' | 'success'>('health');
+  const { addFavorite, isFavorite } = useFavoritesStore();
+  
+  // Core state
+  const [state, setState] = useState<ManifestationState>({
+    currentIntention: null,
+    stats: { sessions: 0, minutes: 0, streak: 0, intentions: 0 },
+    achievements: {},
+    lastSessionDate: null
+  });
+  
+  // Form state
+  const [intentionTitle, setIntentionTitle] = useState('');
+  const [intentionCategory, setIntentionCategory] = useState<Intention['category']>('abundance');
+  const [intentionDescription, setIntentionDescription] = useState('');
+  const [intentionIntensity, setIntensityValue] = useState(5);
+  
+  // Session state
   const [isSessionActive, setIsSessionActive] = useState(false);
+  const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
+  const [elapsedTime, setElapsedTime] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
+  const [pausedOffset, setPausedOffset] = useState(0);
+  
+  // Audio state
+  const [playingBathId, setPlayingBathId] = useState<string | null>(null);
+  
+  // Imported baths from Composer/Favorites
+  const [composerBaths, setComposerBaths] = useState<CustomBath[]>([]);
+  
+  // UI state
+  const [activeTab, setActiveTab] = useState<'intention' | 'session' | 'baths' | 'progress'>('intention');
+  
+  // Timer ref
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  
+  // Animation
+  const pulseAnim = useRef(new Animated.Value(1)).current;
 
-  const categories = [
-    { key: 'health' as const, label: 'Health', emoji: '🌿' },
-    { key: 'wealth' as const, label: 'Wealth', emoji: '💰' },
-    { key: 'love' as const, label: 'Love', emoji: '❤️' },
-    { key: 'success' as const, label: 'Success', emoji: '🎯' },
-  ];
+  // Load state on mount
+  useEffect(() => {
+    loadState();
+    loadComposerBaths();
+  }, [profile?.id]);
+  
+  // Timer effect
+  useEffect(() => {
+    if (isSessionActive && !isPaused && sessionStartTime) {
+      timerRef.current = setInterval(() => {
+        setElapsedTime(Date.now() - sessionStartTime);
+      }, 1000);
+    }
+    
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, [isSessionActive, isPaused, sessionStartTime]);
+  
+  // Pulse animation for active session
+  useEffect(() => {
+    if (isSessionActive && !isPaused) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 1.05, duration: 1000, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: true }),
+        ])
+      ).start();
+    } else {
+      pulseAnim.setValue(1);
+    }
+  }, [isSessionActive, isPaused]);
 
-  const addCustomAffirmation = () => {
-    if (!newAffirmation.trim()) {
-      Alert.alert('Error', 'Please enter an affirmation.');
+  const loadState = async () => {
+    try {
+      const key = profile?.id ? `${STORAGE_KEY}:${profile.id}` : STORAGE_KEY;
+      const stored = await AsyncStorage.getItem(key);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        setState(parsed);
+        if (parsed.currentIntention) {
+          setIntentionTitle(parsed.currentIntention.title || '');
+          setIntentionCategory(parsed.currentIntention.category || 'abundance');
+          setIntentionDescription(parsed.currentIntention.description || '');
+          setIntensityValue(parsed.currentIntention.intensity || 5);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load manifestation state:', error);
+    }
+  };
+
+  const saveState = async (newState: ManifestationState) => {
+    try {
+      const key = profile?.id ? `${STORAGE_KEY}:${profile.id}` : STORAGE_KEY;
+      await AsyncStorage.setItem(key, JSON.stringify(newState));
+      setState(newState);
+    } catch (error) {
+      console.error('Failed to save manifestation state:', error);
+    }
+  };
+
+  const loadComposerBaths = async () => {
+    try {
+      const key = profile?.id ? `customBaths:${profile.id}` : 'customBaths';
+      const stored = await AsyncStorage.getItem(key);
+      if (stored) {
+        setComposerBaths(JSON.parse(stored));
+      }
+    } catch (error) {
+      console.error('Failed to load composer baths:', error);
+    }
+  };
+
+  // Set intention
+  const setIntention = () => {
+    if (!intentionTitle.trim()) {
+      Alert.alert('Name Required', 'Give your intention a name to focus your energy.');
       return;
     }
 
-    const newAff: Affirmation = {
-      id: Date.now().toString(),
-      text: newAffirmation.trim(),
-      category: 'custom',
-      isActive: false,
+    const newIntention: Intention = {
+      title: intentionTitle.trim(),
+      category: intentionCategory,
+      description: intentionDescription.trim(),
+      intensity: intentionIntensity,
+      updatedAt: new Date().toISOString()
     };
 
-    setAffirmations(prev => [newAff, ...prev]);
-    setNewAffirmation('');
-    Alert.alert('Success', 'Custom affirmation added!');
+    const newStats = {
+      ...state.stats,
+      intentions: state.stats.intentions + 1
+    };
+
+    const newState = {
+      ...state,
+      currentIntention: newIntention,
+      stats: newStats,
+      achievements: checkAchievements(newStats, state.achievements)
+    };
+
+    saveState(newState);
+    Alert.alert('✨ Intention Set!', `"${intentionTitle}" locked in. Your recommended frequencies have been updated.`);
   };
 
-  const toggleAffirmation = (id: string) => {
-    setAffirmations(prev =>
-      prev.map(aff => ({
-        ...aff,
-        isActive: aff.id === id ? !aff.isActive : aff.isActive,
-      }))
-    );
+  // Check and unlock achievements
+  const checkAchievements = (stats: ManifestationStats, currentAchievements: Record<string, boolean>) => {
+    const updated = { ...currentAchievements };
+    ACHIEVEMENT_CATALOG.forEach(achievement => {
+      if (!updated[achievement.id] && achievement.check(stats, stats.intentions)) {
+        updated[achievement.id] = true;
+        Alert.alert('🏆 Achievement Unlocked!', `${achievement.icon} ${achievement.name}`);
+      }
+    });
+    return updated;
   };
 
-  const startManifestationSession = () => {
-    const activeAffirmations = affirmations.filter(aff => aff.isActive);
-    if (activeAffirmations.length === 0) {
-      Alert.alert('No Affirmations', 'Please select at least one affirmation to start a session.');
+  // Session management
+  const startSession = () => {
+    if (!state.currentIntention) {
+      Alert.alert('Set Intention First', 'Define your manifestation target before starting a session.');
       return;
     }
 
+    const start = Date.now() - pausedOffset;
+    setSessionStartTime(start);
     setIsSessionActive(true);
-    Alert.alert(
-      'Manifestation Session Started',
-      `Beginning session with ${activeAffirmations.length} affirmations. Find a quiet space and focus on your intentions.`,
-      [
-        {
-          text: 'OK',
-          onPress: () => {
-            // In a real implementation, this would start the manifestation audio/timer
-            setTimeout(() => {
-              setIsSessionActive(false);
-              Alert.alert('Session Complete', 'Your manifestation session is complete. Trust in the process!');
-            }, 5000); // Demo: 5 seconds
+    setIsPaused(false);
+  };
+
+  const pauseSession = () => {
+    if (isSessionActive) {
+      setPausedOffset(elapsedTime);
+      setIsPaused(true);
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    }
+  };
+
+  const resumeSession = () => {
+    if (isPaused) {
+      const start = Date.now() - pausedOffset;
+      setSessionStartTime(start);
+      setIsPaused(false);
+    }
+  };
+
+  const stopSession = (markComplete = false) => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+
+    const minutes = Math.max(1, Math.round(elapsedTime / 60000));
+
+    if (markComplete && elapsedTime > 30000) { // At least 30 seconds
+      const newStats = {
+        ...state.stats,
+        sessions: state.stats.sessions + 1,
+        minutes: state.stats.minutes + minutes
+      };
+      
+      // Update streak
+      const today = new Date().toISOString().slice(0, 10);
+      if (state.lastSessionDate !== today) {
+        if (state.lastSessionDate) {
+          const prev = new Date(state.lastSessionDate);
+          const diff = Math.round((new Date(today).getTime() - prev.getTime()) / (1000 * 60 * 60 * 24));
+          if (diff === 1) {
+            newStats.streak = state.stats.streak + 1;
+          } else {
+            newStats.streak = 1;
           }
+        } else {
+          newStats.streak = 1;
         }
-      ]
+      }
+
+      const newState = {
+        ...state,
+        stats: newStats,
+        lastSessionDate: today,
+        achievements: checkAchievements(newStats, state.achievements)
+      };
+
+      saveState(newState);
+      Alert.alert('🎉 Session Complete!', `${minutes} minutes of focused manifestation energy. Keep going!`);
+    }
+
+    setIsSessionActive(false);
+    setIsPaused(false);
+    setSessionStartTime(null);
+    setElapsedTime(0);
+    setPausedOffset(0);
+    stopAllFrequencies();
+    setPlayingBathId(null);
+  };
+
+  // Format timer display
+  const formatTime = (ms: number) => {
+    const totalSeconds = Math.floor(ms / 1000);
+    const mins = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+    const secs = (totalSeconds % 60).toString().padStart(2, '0');
+    return `${mins}:${secs}`;
+  };
+
+  // Get recommended baths based on intention category
+  const getRecommendedBaths = useCallback(() => {
+    if (!state.currentIntention) return [];
+    
+    const bathIds = CATEGORY_RECOMMENDATIONS[state.currentIntention.category] || [];
+    const catalogBaths = FREQUENCY_BATHS.filter(b => 
+      bathIds.includes(b.id) || b.category === 'manifestation'
+    ).slice(0, 6);
+    
+    return catalogBaths;
+  }, [state.currentIntention]);
+
+  // Play bath
+  const handlePlayBath = async (bath: FrequencyBath | CustomBath) => {
+    try {
+      if (playingBathId === bath.id) {
+        await stopAllFrequencies();
+        setPlayingBathId(null);
+        return;
+      }
+
+      await stopAllFrequencies();
+      setPlayingBathId(bath.id);
+
+      const durationMs = 30 * 60 * 1000;
+      
+      if ('frequencies' in bath) {
+        // Catalog bath
+        await playFrequencyBath(bath.frequencies, durationMs);
+      } else if ('layers' in bath) {
+        // Custom bath from composer
+        const frequencies = bath.layers.map(l => l.hz);
+        await playFrequencyBath(frequencies, durationMs);
+      }
+    } catch (error) {
+      console.error('Failed to play bath:', error);
+      setPlayingBathId(null);
+    }
+  };
+
+  // Render intention form
+  const renderIntentionTab = () => (
+    <View>
+      {/* Current Intention Display */}
+      {state.currentIntention && (
+        <View style={[styles.card, styles.intentionCard]}>
+          <View style={styles.intentionHeader}>
+            <Text style={styles.intentionEmoji}>
+              {INTENTION_CATEGORIES.find(c => c.key === state.currentIntention?.category)?.emoji}
+            </Text>
+            <View style={styles.intentionInfo}>
+              <Text style={styles.intentionTitle}>{state.currentIntention.title}</Text>
+              <Text style={styles.intentionCategory}>
+                {INTENTION_CATEGORIES.find(c => c.key === state.currentIntention?.category)?.label} • Intensity {state.currentIntention.intensity}/10
+              </Text>
+            </View>
+          </View>
+          {state.currentIntention.description ? (
+            <Text style={styles.intentionDescription}>{state.currentIntention.description}</Text>
+          ) : null}
+        </View>
+      )}
+
+      {/* Intention Form */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>🎯 Set Your Intention</Text>
+        
+        <Text style={styles.inputLabel}>What do you want to manifest?</Text>
+        <TextInput
+          style={styles.textInput}
+          placeholder="e.g., Financial freedom, Perfect health..."
+          placeholderTextColor="#64748b"
+          value={intentionTitle}
+          onChangeText={setIntentionTitle}
+        />
+
+        <Text style={styles.inputLabel}>Category</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll}>
+          {INTENTION_CATEGORIES.map(cat => (
+            <Pressable
+              key={cat.key}
+              style={[styles.categoryBtn, intentionCategory === cat.key && styles.categoryBtnActive]}
+              onPress={() => setIntentionCategory(cat.key)}
+            >
+              <Text style={styles.categoryEmoji}>{cat.emoji}</Text>
+              <Text style={[styles.categoryLabel, intentionCategory === cat.key && styles.categoryLabelActive]}>
+                {cat.label}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+
+        <Text style={styles.inputLabel}>Description (optional)</Text>
+        <TextInput
+          style={[styles.textInput, styles.textArea]}
+          placeholder="Describe your intention in detail..."
+          placeholderTextColor="#64748b"
+          value={intentionDescription}
+          onChangeText={setIntentionDescription}
+          multiline
+          numberOfLines={3}
+        />
+
+        <Text style={styles.inputLabel}>Intensity: {intentionIntensity}/10</Text>
+        <View style={styles.intensityRow}>
+          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
+            <Pressable
+              key={n}
+              style={[styles.intensityBtn, intentionIntensity >= n && styles.intensityBtnActive]}
+              onPress={() => setIntensityValue(n)}
+            >
+              <Text style={[styles.intensityText, intentionIntensity >= n && styles.intensityTextActive]}>{n}</Text>
+            </Pressable>
+          ))}
+        </View>
+
+        <Pressable style={styles.setBtn} onPress={setIntention}>
+          <Text style={styles.setBtnText}>✨ Lock In Intention</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+
+  // Render session tab
+  const renderSessionTab = () => (
+    <View>
+      {/* Timer Card */}
+      <Animated.View style={[styles.card, styles.timerCard, { transform: [{ scale: pulseAnim }] }]}>
+        <Text style={styles.timerLabel}>
+          {isSessionActive 
+            ? (isPaused ? '⏸️ Paused' : '🟢 Session Active') 
+            : '⭕ Ready to Manifest'}
+        </Text>
+        <Text style={styles.timerDisplay}>{formatTime(elapsedTime)}</Text>
+        
+        <View style={styles.timerButtons}>
+          {!isSessionActive ? (
+            <Pressable style={styles.startBtn} onPress={startSession}>
+              <Text style={styles.startBtnText}>▶️ Start Session</Text>
+            </Pressable>
+          ) : (
+            <>
+              {isPaused ? (
+                <Pressable style={styles.resumeBtn} onPress={resumeSession}>
+                  <Text style={styles.resumeBtnText}>▶️ Resume</Text>
+                </Pressable>
+              ) : (
+                <Pressable style={styles.pauseBtn} onPress={pauseSession}>
+                  <Text style={styles.pauseBtnText}>⏸️ Pause</Text>
+                </Pressable>
+              )}
+              <Pressable style={styles.stopBtn} onPress={() => stopSession(true)}>
+                <Text style={styles.stopBtnText}>⏹️ Complete</Text>
+              </Pressable>
+            </>
+          )}
+        </View>
+      </Animated.View>
+
+      {/* Session Tips */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>💡 Session Guide</Text>
+        <Text style={styles.tipItem}>• Find a quiet, comfortable space</Text>
+        <Text style={styles.tipItem}>• Use headphones for best experience</Text>
+        <Text style={styles.tipItem}>• Visualize your intention clearly</Text>
+        <Text style={styles.tipItem}>• Feel the emotions of achievement</Text>
+        <Text style={styles.tipItem}>• Breathe deeply and stay present</Text>
+        <Text style={styles.tipItem}>• Trust the process completely</Text>
+      </View>
+
+      {/* Current Intention Reminder */}
+      {state.currentIntention && (
+        <View style={[styles.card, styles.reminderCard]}>
+          <Text style={styles.reminderLabel}>Current Focus:</Text>
+          <Text style={styles.reminderTitle}>{state.currentIntention.title}</Text>
+        </View>
+      )}
+    </View>
+  );
+
+  // Render baths tab
+  const renderBathsTab = () => {
+    const recommendedBaths = getRecommendedBaths();
+    
+    return (
+      <View>
+        {/* Recommended Baths */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>🎵 Recommended Frequencies</Text>
+          {!state.currentIntention && (
+            <Text style={styles.emptyHint}>Set an intention to unlock personalized recommendations</Text>
+          )}
+          {recommendedBaths.map(bath => (
+            <View key={bath.id} style={styles.bathItem}>
+              <View style={styles.bathInfo}>
+                <Text style={styles.bathName}>{bath.name}</Text>
+                <Text style={styles.bathFreqs}>
+                  {bath.frequencies.map(f => `${f}Hz`).join(' + ')}
+                </Text>
+              </View>
+              <View style={styles.bathActions}>
+                <Pressable
+                  style={[styles.bathPlayBtn, playingBathId === bath.id && styles.bathPlayBtnActive]}
+                  onPress={() => handlePlayBath(bath)}
+                >
+                  <Text style={styles.bathPlayBtnText}>
+                    {playingBathId === bath.id ? '⏹️' : '▶️'}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={styles.bathFavBtn}
+                  onPress={() => addFavorite(bath.id, 'bath', profile?.id)}
+                >
+                  <Text style={styles.bathFavBtnText}>
+                    {isFavorite(bath.id) ? '💜' : '🤍'}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          ))}
+        </View>
+
+        {/* Composer Baths */}
+        {composerBaths.length > 0 && (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>🎨 Your Custom Baths</Text>
+            <Text style={styles.cardSubtitle}>From Composer & Favorites</Text>
+            {composerBaths.map(bath => (
+              <View key={bath.id} style={styles.bathItem}>
+                <View style={styles.bathInfo}>
+                  <View style={styles.bathNameRow}>
+                    <Text style={styles.bathName}>{bath.name}</Text>
+                    <View style={styles.customBadge}>
+                      <Text style={styles.customBadgeText}>Custom</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.bathFreqs}>
+                    {bath.layers.map(l => `${l.hz}Hz`).join(' + ')}
+                  </Text>
+                </View>
+                <Pressable
+                  style={[styles.bathPlayBtn, playingBathId === bath.id && styles.bathPlayBtnActive]}
+                  onPress={() => handlePlayBath(bath)}
+                >
+                  <Text style={styles.bathPlayBtnText}>
+                    {playingBathId === bath.id ? '⏹️' : '▶️'}
+                  </Text>
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Manifestation Category Baths */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>🌟 Manifestation Collection</Text>
+          {FREQUENCY_BATHS.filter(b => b.category === 'manifestation').slice(0, 8).map(bath => (
+            <View key={bath.id} style={styles.bathItem}>
+              <View style={styles.bathInfo}>
+                <Text style={styles.bathName}>{bath.name}</Text>
+                <Text style={styles.bathFreqs}>
+                  {bath.frequencies.map(f => `${f}Hz`).join(' + ')}
+                </Text>
+                <Text style={styles.bathDescription} numberOfLines={2}>
+                  {bath.description}
+                </Text>
+              </View>
+              <View style={styles.bathActions}>
+                <Pressable
+                  style={[styles.bathPlayBtn, playingBathId === bath.id && styles.bathPlayBtnActive]}
+                  onPress={() => handlePlayBath(bath)}
+                >
+                  <Text style={styles.bathPlayBtnText}>
+                    {playingBathId === bath.id ? '⏹️' : '▶️'}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={styles.bathFavBtn}
+                  onPress={() => addFavorite(bath.id, 'bath', profile?.id)}
+                >
+                  <Text style={styles.bathFavBtnText}>
+                    {isFavorite(bath.id) ? '💜' : '🤍'}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          ))}
+        </View>
+      </View>
     );
   };
 
-  const filteredAffirmations = affirmations.filter(aff => 
-    selectedCategory === 'health' ? aff.category === 'health' :
-    selectedCategory === 'wealth' ? aff.category === 'wealth' :
-    selectedCategory === 'love' ? aff.category === 'love' :
-    selectedCategory === 'success' ? aff.category === 'success' :
-    false
-  );
-
-  const customAffirmations = affirmations.filter(aff => aff.category === 'custom');
-
-  const renderAffirmationItem = ({ item }: { item: Affirmation }) => (
-    <Pressable
-      style={[styles.affirmationCard, item.isActive && styles.affirmationCardActive]}
-      onPress={() => toggleAffirmation(item.id)}
-    >
-      <View style={styles.affirmationHeader}>
-        <Text style={[styles.affirmationText, item.isActive && styles.affirmationTextActive]}>
-          {item.text}
-        </Text>
-        <View style={[styles.checkbox, item.isActive && styles.checkboxActive]}>
-          {item.isActive && <Text style={styles.checkmark}>✓</Text>}
+  // Render progress tab
+  const renderProgressTab = () => (
+    <View>
+      {/* Stats Overview */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>📊 Your Journey</Text>
+        <View style={styles.statsGrid}>
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>{state.stats.sessions}</Text>
+            <Text style={styles.statLabel}>Sessions</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>{state.stats.minutes}</Text>
+            <Text style={styles.statLabel}>Minutes</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>{state.stats.streak}</Text>
+            <Text style={styles.statLabel}>Day Streak</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>{state.stats.intentions}</Text>
+            <Text style={styles.statLabel}>Intentions</Text>
+          </View>
         </View>
       </View>
-    </Pressable>
+
+      {/* Achievements */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>🏆 Achievements</Text>
+        <View style={styles.achievementsGrid}>
+          {ACHIEVEMENT_CATALOG.map(achievement => {
+            const unlocked = state.achievements[achievement.id];
+            return (
+              <View key={achievement.id} style={[styles.achievementItem, unlocked && styles.achievementUnlocked]}>
+                <Text style={styles.achievementIcon}>{achievement.icon}</Text>
+                <Text style={[styles.achievementName, unlocked && styles.achievementNameUnlocked]}>
+                  {achievement.name}
+                </Text>
+                <Text style={styles.achievementDesc}>{achievement.description}</Text>
+              </View>
+            );
+          })}
+        </View>
+      </View>
+
+      {/* Motivation */}
+      <View style={[styles.card, styles.motivationCard]}>
+        <Text style={styles.motivationQuote}>
+          "Your thoughts become things. Choose the good ones."
+        </Text>
+        <Text style={styles.motivationAuthor}>— Mike Dooley</Text>
+      </View>
+    </View>
   );
 
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.heading}>Manifestation Hub</Text>
-        <Text style={styles.subheading}>Program your subconscious for success</Text>
+        <Text style={styles.subheading}>Program your reality with intention</Text>
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Active Session</Text>
-        <Text style={styles.sessionStatus}>
-          {isSessionActive ? '🟢 Session in progress...' : '⭕ Ready to manifest'}
-        </Text>
-        <Pressable 
-          style={[styles.sessionBtn, isSessionActive && styles.sessionBtnActive]} 
-          onPress={startManifestationSession}
-          disabled={isSessionActive}
-        >
-          <Text style={styles.sessionBtnText}>
-            {isSessionActive ? 'Manifesting...' : 'Start Manifestation Session'}
-          </Text>
-        </Pressable>
+      {/* Tab Navigation */}
+      <View style={styles.tabBar}>
+        {[
+          { key: 'intention' as const, label: '🎯 Intent' },
+          { key: 'session' as const, label: '⏱️ Session' },
+          { key: 'baths' as const, label: '🎵 Baths' },
+          { key: 'progress' as const, label: '📊 Progress' },
+        ].map(tab => (
+          <Pressable
+            key={tab.key}
+            style={[styles.tab, activeTab === tab.key && styles.tabActive]}
+            onPress={() => setActiveTab(tab.key)}
+          >
+            <Text style={[styles.tabText, activeTab === tab.key && styles.tabTextActive]}>
+              {tab.label}
+            </Text>
+          </Pressable>
+        ))}
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Choose Affirmation Category</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryContainer}>
-          {categories.map(cat => (
-            <Pressable
-              key={cat.key}
-              style={[styles.categoryBtn, selectedCategory === cat.key && styles.categoryBtnActive]}
-              onPress={() => setSelectedCategory(cat.key)}
-            >
-              <Text style={styles.categoryEmoji}>{cat.emoji}</Text>
-              <Text style={[styles.categoryText, selectedCategory === cat.key && styles.categoryTextActive]}>
-                {cat.label}
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-      </View>
+      {/* Tab Content */}
+      {activeTab === 'intention' && renderIntentionTab()}
+      {activeTab === 'session' && renderSessionTab()}
+      {activeTab === 'baths' && renderBathsTab()}
+      {activeTab === 'progress' && renderProgressTab()}
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>
-          {categories.find(c => c.key === selectedCategory)?.emoji} {categories.find(c => c.key === selectedCategory)?.label} Affirmations
-        </Text>
-        <FlatList
-          data={filteredAffirmations}
-          renderItem={renderAffirmationItem}
-          keyExtractor={item => item.id}
-          scrollEnabled={false}
-          style={styles.affirmationsList}
-        />
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Create Custom Affirmation</Text>
-        <TextInput
-          style={styles.textInput}
-          placeholder="I am grateful for..."
-          placeholderTextColor="#64748b"
-          value={newAffirmation}
-          onChangeText={setNewAffirmation}
-          multiline
-        />
-        <Pressable style={styles.addBtn} onPress={addCustomAffirmation}>
-          <Text style={styles.addBtnText}>Add Custom Affirmation</Text>
-        </Pressable>
-      </View>
-
-      {customAffirmations.length > 0 && (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>✨ Your Custom Affirmations</Text>
-          <FlatList
-            data={customAffirmations}
-            renderItem={renderAffirmationItem}
-            keyExtractor={item => item.id}
-            scrollEnabled={false}
-          />
-        </View>
-      )}
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>💡 Manifestation Tips</Text>
-        <Text style={styles.tipText}>• Use present tense ("I am" not "I will be")</Text>
-        <Text style={styles.tipText}>• Feel the emotions of already having what you want</Text>
-        <Text style={styles.tipText}>• Repeat affirmations daily for best results</Text>
-        <Text style={styles.tipText}>• Combine with healing frequencies for deeper impact</Text>
-        <Text style={styles.tipText}>• Visualize your goals while listening</Text>
-      </View>
+      <View style={{ height: 40 }} />
     </ScrollView>
   );
 }
@@ -231,117 +766,86 @@ const styles = StyleSheet.create({
     color: '#fef3c7',
     fontSize: 16,
   },
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: '#0b1120',
+    borderRadius: 16,
+    padding: 4,
+    marginBottom: 20,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderRadius: 12,
+  },
+  tabActive: {
+    backgroundColor: '#4338ca',
+  },
+  tabText: {
+    color: '#94a3b8',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  tabTextActive: {
+    color: '#ffffff',
+  },
   card: {
     backgroundColor: '#0b1120',
     borderRadius: 20,
     padding: 20,
     borderWidth: 1,
-    borderColor: '#4338ca',
+    borderColor: '#1e293b',
     marginBottom: 16,
   },
   cardTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#bfdbfe',
+    color: '#e0e7ff',
     marginBottom: 16,
   },
-  sessionStatus: {
-    color: '#cbd5f5',
-    fontSize: 16,
+  cardSubtitle: {
+    fontSize: 14,
+    color: '#64748b',
+    marginTop: -12,
     marginBottom: 16,
-    textAlign: 'center',
   },
-  sessionBtn: {
-    backgroundColor: '#10b981',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
+  intentionCard: {
+    borderColor: '#4338ca',
+    backgroundColor: '#1e1b4b',
   },
-  sessionBtnActive: {
-    backgroundColor: '#ef4444',
-  },
-  sessionBtnText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  categoryContainer: {
-    marginBottom: 8,
-  },
-  categoryBtn: {
-    backgroundColor: '#1e293b',
-    borderRadius: 12,
-    padding: 12,
-    marginRight: 12,
-    alignItems: 'center',
-    minWidth: 80,
-    borderWidth: 1,
-    borderColor: '#475569',
-  },
-  categoryBtnActive: {
-    backgroundColor: '#4338ca',
-    borderColor: '#6366f1',
-  },
-  categoryEmoji: {
-    fontSize: 20,
-    marginBottom: 4,
-  },
-  categoryText: {
-    color: '#94a3b8',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  categoryTextActive: {
-    color: '#ffffff',
-  },
-  affirmationsList: {
-    maxHeight: 400,
-  },
-  affirmationCard: {
-    backgroundColor: '#1e293b',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#475569',
-  },
-  affirmationCardActive: {
-    backgroundColor: '#4338ca',
-    borderColor: '#6366f1',
-  },
-  affirmationHeader: {
+  intentionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    marginBottom: 12,
   },
-  affirmationText: {
-    color: '#cbd5f5',
-    fontSize: 16,
-    lineHeight: 24,
+  intentionEmoji: {
+    fontSize: 40,
+    marginRight: 16,
+  },
+  intentionInfo: {
     flex: 1,
-    marginRight: 12,
   },
-  affirmationTextActive: {
-    color: '#ffffff',
-    fontWeight: '600',
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#64748b',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkboxActive: {
-    backgroundColor: '#10b981',
-    borderColor: '#10b981',
-  },
-  checkmark: {
-    color: '#ffffff',
-    fontSize: 14,
+  intentionTitle: {
+    fontSize: 20,
     fontWeight: '700',
+    color: '#fde68a',
+  },
+  intentionCategory: {
+    color: '#a5b4fc',
+    fontSize: 14,
+  },
+  intentionDescription: {
+    color: '#cbd5e1',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  inputLabel: {
+    color: '#94a3b8',
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+    marginTop: 12,
   },
   textInput: {
     backgroundColor: '#1e293b',
@@ -350,26 +854,314 @@ const styles = StyleSheet.create({
     color: '#f8fafc',
     fontSize: 16,
     borderWidth: 1,
-    borderColor: '#475569',
+    borderColor: '#334155',
+  },
+  textArea: {
     minHeight: 80,
     textAlignVertical: 'top',
-    marginBottom: 16,
   },
-  addBtn: {
-    backgroundColor: '#4338ca',
+  categoryScroll: {
+    marginVertical: 8,
+  },
+  categoryBtn: {
+    backgroundColor: '#1e293b',
     borderRadius: 12,
-    padding: 16,
+    padding: 12,
+    marginRight: 10,
+    alignItems: 'center',
+    minWidth: 80,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  categoryBtnActive: {
+    backgroundColor: '#4338ca',
+    borderColor: '#6366f1',
+  },
+  categoryEmoji: {
+    fontSize: 24,
+    marginBottom: 4,
+  },
+  categoryLabel: {
+    color: '#94a3b8',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  categoryLabelActive: {
+    color: '#ffffff',
+  },
+  intensityRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  intensityBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#1e293b',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  intensityBtnActive: {
+    backgroundColor: '#4338ca',
+    borderColor: '#6366f1',
+  },
+  intensityText: {
+    color: '#64748b',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  intensityTextActive: {
+    color: '#ffffff',
+  },
+  setBtn: {
+    backgroundColor: '#10b981',
+    borderRadius: 14,
+    padding: 18,
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  setBtnText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  timerCard: {
+    alignItems: 'center',
+    borderColor: '#4338ca',
+  },
+  timerLabel: {
+    color: '#a5b4fc',
+    fontSize: 16,
+    marginBottom: 12,
+  },
+  timerDisplay: {
+    fontSize: 64,
+    fontWeight: '800',
+    color: '#fde68a',
+    fontVariant: ['tabular-nums'],
+  },
+  timerButtons: {
+    flexDirection: 'row',
+    marginTop: 20,
+    gap: 12,
+  },
+  startBtn: {
+    backgroundColor: '#10b981',
+    borderRadius: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+  },
+  startBtnText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  pauseBtn: {
+    backgroundColor: '#f59e0b',
+    borderRadius: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+  },
+  pauseBtnText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  resumeBtn: {
+    backgroundColor: '#10b981',
+    borderRadius: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+  },
+  resumeBtnText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  stopBtn: {
+    backgroundColor: '#ef4444',
+    borderRadius: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+  },
+  stopBtnText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  tipItem: {
+    color: '#94a3b8',
+    fontSize: 14,
+    lineHeight: 24,
+  },
+  reminderCard: {
+    backgroundColor: '#1e1b4b',
+    borderColor: '#4338ca',
     alignItems: 'center',
   },
-  addBtnText: {
-    color: '#ffffff',
+  reminderLabel: {
+    color: '#a5b4fc',
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  reminderTitle: {
+    color: '#fde68a',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  bathItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1e293b',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
+  },
+  bathInfo: {
+    flex: 1,
+  },
+  bathNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  bathName: {
+    color: '#e0e7ff',
     fontSize: 16,
     fontWeight: '600',
   },
-  tipText: {
+  customBadge: {
+    backgroundColor: '#4338ca',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    marginLeft: 8,
+  },
+  customBadgeText: {
+    color: '#e0e7ff',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  bathFreqs: {
+    color: '#64748b',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  bathDescription: {
+    color: '#94a3b8',
+    fontSize: 12,
+    marginTop: 4,
+  },
+  bathActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  bathPlayBtn: {
+    backgroundColor: '#4338ca',
+    borderRadius: 10,
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bathPlayBtnActive: {
+    backgroundColor: '#ef4444',
+  },
+  bathPlayBtnText: {
+    fontSize: 18,
+  },
+  bathFavBtn: {
+    backgroundColor: '#374151',
+    borderRadius: 10,
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bathFavBtnText: {
+    fontSize: 18,
+  },
+  emptyHint: {
+    color: '#64748b',
+    fontSize: 14,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    paddingVertical: 20,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  statItem: {
+    width: '50%',
+    alignItems: 'center',
+    paddingVertical: 16,
+  },
+  statValue: {
+    fontSize: 36,
+    fontWeight: '800',
+    color: '#fde68a',
+  },
+  statLabel: {
     color: '#94a3b8',
     fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 4,
+    marginTop: 4,
+  },
+  achievementsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  achievementItem: {
+    width: '47%',
+    backgroundColor: '#1e293b',
+    borderRadius: 12,
+    padding: 14,
+    alignItems: 'center',
+    opacity: 0.5,
+  },
+  achievementUnlocked: {
+    opacity: 1,
+    backgroundColor: '#1e1b4b',
+    borderWidth: 1,
+    borderColor: '#4338ca',
+  },
+  achievementIcon: {
+    fontSize: 32,
+    marginBottom: 8,
+  },
+  achievementName: {
+    color: '#64748b',
+    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  achievementNameUnlocked: {
+    color: '#fde68a',
+  },
+  achievementDesc: {
+    color: '#475569',
+    fontSize: 11,
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  motivationCard: {
+    backgroundColor: '#1e1b4b',
+    borderColor: '#4338ca',
+    alignItems: 'center',
+  },
+  motivationQuote: {
+    color: '#e0e7ff',
+    fontSize: 18,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    lineHeight: 26,
+  },
+  motivationAuthor: {
+    color: '#a5b4fc',
+    fontSize: 14,
+    marginTop: 12,
   },
 });

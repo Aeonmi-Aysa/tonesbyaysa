@@ -2,9 +2,22 @@ export interface Frequency {
   id: string;
   name: string;
   hz: number;
-  category: 'solfeggio' | 'chakra' | 'binaural' | 'healing' | 'planetary' | 'crystal' | 'color' | 'organ' | 'emotion' | 'dna' | 'immune' | 'brain' | 'sleep' | 'energy' | 'manifestation';
+  category: 'solfeggio' | 'chakra' | 'binaural' | 'healing' | 'planetary' | 'crystal' | 'color' | 'organ' | 'emotion' | 'dna' | 'immune' | 'brain' | 'sleep' | 'energy' | 'manifestation' | 'bath';
   description: string;
   benefits: string[];
+  duration: number;
+  isPremium: boolean;
+}
+
+// Bath (multi-frequency) interface
+export interface FrequencyBath {
+  id: string;
+  name: string;
+  frequencies: number[]; // Array of Hz values to layer together
+  category: 'healing' | 'mental' | 'spiritual' | 'emotional' | 'psychic' | 'manifestation' | 'metaphysical';
+  description: string;
+  benefits: string[];
+  usage: string;
   duration: number;
   isPremium: boolean;
 }
@@ -88,7 +101,7 @@ const generateMassiveFrequencyLibrary = (): Frequency[] => {
     { name: 'Focus Beta 14Hz', hz: 14, benefits: ['Sharp focus', 'Mental acuity', 'Productivity'], premium: true },
     { name: 'High Beta 16Hz', hz: 16, benefits: ['High activity', 'Quick thinking', 'Mental agility'], premium: true },
     { name: 'Peak Beta 18Hz', hz: 18, benefits: ['Peak performance', 'Analytical thinking', 'Logic'], premium: true },
-    { name: 'Gamma 40Hz', hz: 40, benefits: ['Peak cognition', 'Heightened awareness', 'Unity consciousness'], premium: true },
+    { name: 'Gamma 40Hz', hz: 40, benefits: ['Peak cognition (MIT research-backed)', 'Memory enhancement', 'Focus & clarity', 'Neural synchronization'], premium: true },
     { name: 'High Gamma 60Hz', hz: 60, benefits: ['Expanded consciousness', 'Mystical experiences', 'Transcendence'], premium: true },
     { name: 'Ultra Gamma 80Hz', hz: 80, benefits: ['Ultimate awareness', 'Cosmic consciousness', 'Enlightenment'], premium: true }
   ];
@@ -480,4 +493,470 @@ export const getFrequenciesByCategory = (category: string) => {
 
 // Export the count for reference
 export const TOTAL_FREQUENCIES = FREQUENCIES.length;
-console.log(`🎵 HealTone Library: ${TOTAL_FREQUENCIES} healing frequencies loaded!`);
+
+// =================================================================
+// FREQUENCY BATHS - Pre-assembled multi-frequency healing sessions
+// Rebuilt from browser version for mobile app compatibility
+// =================================================================
+export const FREQUENCY_BATHS: FrequencyBath[] = [
+  // === HEALING BATHS ===
+  {
+    id: 'bath-healing-core',
+    name: 'Healing Bath',
+    frequencies: [285, 528, 7.83],
+    category: 'healing',
+    description: 'Full-body regeneration with Schumann grounding',
+    benefits: ['Cellular repair', 'DNA healing', 'Earth grounding'],
+    usage: 'Full-body regeneration + grounding for 20–30 min',
+    duration: 1800,
+    isPremium: false
+  },
+  {
+    id: 'bath-pain-dissolver',
+    name: 'Pain Dissolver Bath',
+    frequencies: [174, 110, 7.83],
+    category: 'healing',
+    description: 'Deep relaxation and inflammation reduction',
+    benefits: ['Pain relief', 'Inflammation reduction', 'Grounding'],
+    usage: 'Deep relaxation and inflammation reduction',
+    duration: 1200,
+    isPremium: false
+  },
+  {
+    id: 'bath-bone-nerve',
+    name: 'Bone & Nerve Regeneration',
+    frequencies: [128, 285, 396],
+    category: 'healing',
+    description: 'Supports skeletal and nervous system healing',
+    benefits: ['Bone healing', 'Nerve repair', 'Tissue regeneration'],
+    usage: 'Supports skeletal and nervous system healing',
+    duration: 1200,
+    isPremium: true
+  },
+  {
+    id: 'bath-rapid-recovery',
+    name: 'Rapid Recovery Bath',
+    frequencies: [285, 528, 741],
+    category: 'healing',
+    description: 'Speeds cellular repair and detox simultaneously',
+    benefits: ['Fast recovery', 'Cell repair', 'Detoxification'],
+    usage: 'Speeds cellular repair and detox simultaneously',
+    duration: 1200,
+    isPremium: true
+  },
+  {
+    id: 'bath-immune-booster',
+    name: 'Immune Booster Bath',
+    frequencies: [741, 40, 639],
+    category: 'healing',
+    description: 'Detox, heart coherence, and gamma pulses for immunity',
+    benefits: ['Immune boost', 'Detox', 'Heart coherence'],
+    usage: 'Detox, heart coherence, and gamma pulses for immunity',
+    duration: 1200,
+    isPremium: true
+  },
+  {
+    id: 'bath-vital-energy',
+    name: 'Vital Energy Revive',
+    frequencies: [396, 639, 136.1],
+    category: 'healing',
+    description: 'Restores life force while stabilizing recovery energy',
+    benefits: ['Energy restoration', 'Life force', 'Vitality'],
+    usage: 'Restores life force while stabilizing recovery energy',
+    duration: 1200,
+    isPremium: true
+  },
+
+  // === MENTAL/FOCUS BATHS ===
+  {
+    id: 'bath-focus',
+    name: 'Focus Bath',
+    frequencies: [14, 40, 528],
+    category: 'mental',
+    description: 'Sharp focus and positive mindset while working',
+    benefits: ['Enhanced focus', 'Mental clarity', 'Positive mood'],
+    usage: 'Sharp focus and positive mindset while working',
+    duration: 1200,
+    isPremium: false
+  },
+  {
+    id: 'bath-brain-fog',
+    name: 'Brain Fog Clearer',
+    frequencies: [7.83, 10, 741],
+    category: 'mental',
+    description: 'Sweeps mental fatigue and fog with Earth resonance',
+    benefits: ['Mental clarity', 'Fog clearing', 'Earth grounding'],
+    usage: 'Sweeps mental fatigue and fog with Earth resonance',
+    duration: 1200,
+    isPremium: false
+  },
+  {
+    id: 'bath-neuroplasticity',
+    name: 'Neuroplasticity Expansion',
+    frequencies: [6, 40, 10],
+    category: 'mental',
+    description: 'Boosts memory, creativity, and neural rewiring',
+    benefits: ['Neuroplasticity', 'Memory boost', 'Creativity'],
+    usage: 'Boosts memory, creativity, and neural rewiring',
+    duration: 1200,
+    isPremium: true
+  },
+  {
+    id: 'bath-logic-reasoning',
+    name: 'Logic & Reasoning Power',
+    frequencies: [14, 40, 7.83],
+    category: 'mental',
+    description: 'Sharpens thinking while keeping you grounded',
+    benefits: ['Logic enhancement', 'Reasoning', 'Grounding'],
+    usage: 'Sharpens thinking while keeping you grounded',
+    duration: 1200,
+    isPremium: true
+  },
+  {
+    id: 'bath-deep-study',
+    name: 'Deep Study Flow',
+    frequencies: [10, 14, 528],
+    category: 'mental',
+    description: 'Clarity + focus + positive emotional tone for studying',
+    benefits: ['Study focus', 'Learning enhancement', 'Clarity'],
+    usage: 'Clarity + focus + positive emotional tone for studying',
+    duration: 1200,
+    isPremium: true
+  },
+  {
+    id: 'bath-math-insight',
+    name: 'Mathematical Insight Bath',
+    frequencies: [40, 852, 14],
+    category: 'mental',
+    description: 'Enhances problem-solving and symbolic recognition',
+    benefits: ['Problem solving', 'Mathematical thinking', 'Insight'],
+    usage: 'Enhances problem-solving and symbolic recognition',
+    duration: 1200,
+    isPremium: true
+  },
+
+  // === SPIRITUAL BATHS ===
+  {
+    id: 'bath-awakening-gateway',
+    name: 'Awakening Gateway',
+    frequencies: [4, 963, 136.1],
+    category: 'spiritual',
+    description: 'For breakthroughs and cosmic alignment',
+    benefits: ['Spiritual awakening', 'Cosmic alignment', 'Breakthroughs'],
+    usage: 'For breakthroughs and cosmic alignment',
+    duration: 1800,
+    isPremium: false
+  },
+  {
+    id: 'bath-chakra-alignment',
+    name: 'Chakra Alignment Sequence',
+    frequencies: [396, 417, 528, 639, 741, 852, 963],
+    category: 'spiritual',
+    description: 'Full chakra sweep from root to crown',
+    benefits: ['Chakra balancing', 'Energy alignment', 'Full body healing'],
+    usage: '3–7 min per tone to sweep the energy body',
+    duration: 2400,
+    isPremium: true
+  },
+  {
+    id: 'bath-kundalini',
+    name: 'Kundalini Rising Bath',
+    frequencies: [396, 528, 852],
+    category: 'spiritual',
+    description: 'Activates kundalini flow upward safely',
+    benefits: ['Kundalini activation', 'Energy flow', 'Spiritual awakening'],
+    usage: 'Activates kundalini flow upward safely',
+    duration: 1800,
+    isPremium: true
+  },
+  {
+    id: 'bath-universal-harmony',
+    name: 'Universal Harmony Bath',
+    frequencies: [432, 7.83, 963],
+    category: 'spiritual',
+    description: 'Aligns the body with universal peace signals',
+    benefits: ['Universal harmony', 'Peace', 'Divine connection'],
+    usage: 'Aligns the body with universal peace signals',
+    duration: 1800,
+    isPremium: true
+  },
+  {
+    id: 'bath-crown-light',
+    name: 'Crown Light Expansion',
+    frequencies: [963, 136.1, 888],
+    category: 'spiritual',
+    description: 'Connects divine consciousness with abundance streams',
+    benefits: ['Crown activation', 'Divine connection', 'Abundance'],
+    usage: 'Connects divine consciousness with abundance streams',
+    duration: 1800,
+    isPremium: true
+  },
+
+  // === EMOTIONAL BATHS ===
+  {
+    id: 'bath-anxiety-release',
+    name: 'Anxiety Release Bath',
+    frequencies: [396, 639, 10],
+    category: 'emotional',
+    description: 'Grounding and emotional resilience with alpha entrainment',
+    benefits: ['Anxiety relief', 'Emotional resilience', 'Calm'],
+    usage: 'Grounding and emotional resilience with alpha entrainment',
+    duration: 1200,
+    isPremium: false
+  },
+  {
+    id: 'bath-fear-release-cleanse',
+    name: 'Fear Release Deep Cleanse',
+    frequencies: [396, 417, 7.83],
+    category: 'emotional',
+    description: 'Removes lingering trauma with Earth resonance support',
+    benefits: ['Fear release', 'Trauma healing', 'Grounding'],
+    usage: 'Removes lingering trauma with Earth resonance support',
+    duration: 1200,
+    isPremium: true
+  },
+  {
+    id: 'bath-emotional-reset',
+    name: 'Emotional Reset Bath',
+    frequencies: [396, 639, 528],
+    category: 'emotional',
+    description: 'Rebalances heart and mind for healing',
+    benefits: ['Emotional balance', 'Heart healing', 'Mental clarity'],
+    usage: 'Rebalances heart and mind for healing',
+    duration: 1200,
+    isPremium: true
+  },
+  {
+    id: 'bath-anxiety-eraser',
+    name: 'Anxiety Eraser',
+    frequencies: [110, 432, 10],
+    category: 'emotional',
+    description: 'Calms panic and stabilizes breathing via alpha entrainment',
+    benefits: ['Panic relief', 'Breathing stabilization', 'Calm'],
+    usage: 'Calms panic and stabilizes breathing via alpha entrainment',
+    duration: 1200,
+    isPremium: true
+  },
+  {
+    id: 'bath-self-love',
+    name: 'Self-Love Enhancement',
+    frequencies: [528, 639, 852],
+    category: 'emotional',
+    description: 'Amplifies self-worth and inner joy',
+    benefits: ['Self love', 'Self worth', 'Inner joy'],
+    usage: 'Amplifies self-worth and inner joy',
+    duration: 1200,
+    isPremium: true
+  },
+  {
+    id: 'bath-depression-lifter',
+    name: 'Depression Lifter Bath',
+    frequencies: [396, 528, 40],
+    category: 'emotional',
+    description: 'Energizes mood with gamma uplift',
+    benefits: ['Mood elevation', 'Energy boost', 'Emotional lift'],
+    usage: 'Energizes mood with gamma uplift',
+    duration: 1200,
+    isPremium: true
+  },
+
+  // === PSYCHIC BATHS ===
+  {
+    id: 'bath-third-eye-ascension',
+    name: 'Third Eye Ascension',
+    frequencies: [852, 936, 40],
+    category: 'psychic',
+    description: 'Boosts intuition with gamma bursts',
+    benefits: ['Third eye activation', 'Intuition boost', 'Psychic enhancement'],
+    usage: 'Boosts intuition with gamma bursts',
+    duration: 1800,
+    isPremium: true
+  },
+  {
+    id: 'bath-astral-navigator',
+    name: 'Astral Navigator',
+    frequencies: [4, 7.83, 852],
+    category: 'psychic',
+    description: 'Ideal for out-of-body exploration',
+    benefits: ['Astral projection', 'OBE support', 'Theta trance'],
+    usage: 'Ideal for out-of-body exploration',
+    duration: 1800,
+    isPremium: true
+  },
+  {
+    id: 'bath-remote-viewing',
+    name: 'Remote Viewing Gateway',
+    frequencies: [6, 8, 852],
+    category: 'psychic',
+    description: 'Enhances clairvoyance and distant sensing',
+    benefits: ['Remote viewing', 'Clairvoyance', 'Distant sensing'],
+    usage: 'Enhances clairvoyance and distant sensing',
+    duration: 1800,
+    isPremium: true
+  },
+  {
+    id: 'bath-psychic-amplifier',
+    name: 'Psychic Amplifier Bath',
+    frequencies: [852, 936, 639],
+    category: 'psychic',
+    description: 'Combines intuition with heart coherence for ESP',
+    benefits: ['ESP enhancement', 'Intuition', 'Heart coherence'],
+    usage: 'Combines intuition with heart coherence for ESP',
+    duration: 1800,
+    isPremium: true
+  },
+  {
+    id: 'bath-pineal-light',
+    name: 'Pineal Light Activation',
+    frequencies: [852, 963, 7.83],
+    category: 'psychic',
+    description: 'Decalcifies and activates pineal awareness',
+    benefits: ['Pineal activation', 'Decalcification', 'Awareness'],
+    usage: 'Decalcifies and activates pineal awareness',
+    duration: 1800,
+    isPremium: true
+  },
+  {
+    id: 'bath-telekinetic',
+    name: 'Telekinetic Resonance',
+    frequencies: [8, 45, 852],
+    category: 'psychic',
+    description: 'Experimental field for energy manipulation',
+    benefits: ['Energy manipulation', 'Field activation', 'Psychic power'],
+    usage: 'Experimental field for energy manipulation',
+    duration: 1800,
+    isPremium: true
+  },
+
+  // === MANIFESTATION BATHS ===
+  {
+    id: 'bath-abundance-flow',
+    name: 'Abundance Flow',
+    frequencies: [396, 528, 888],
+    category: 'manifestation',
+    description: 'Clears scarcity, charges intentions with love, amplifies abundance',
+    benefits: ['Abundance', 'Scarcity clearing', 'Love charging'],
+    usage: 'Clears scarcity, charges intentions with love, amplifies abundance',
+    duration: 1200,
+    isPremium: true
+  },
+  {
+    id: 'bath-opportunity-magnet',
+    name: 'Opportunity Magnet',
+    frequencies: [7.83, 639, 222],
+    category: 'manifestation',
+    description: 'Grounds, opens the heart, and aligns partnership energy',
+    benefits: ['Opportunity attraction', 'Heart opening', 'Partnership'],
+    usage: 'Grounds, opens the heart, and aligns partnership energy',
+    duration: 1200,
+    isPremium: true
+  },
+  {
+    id: 'bath-infinite-prosperity',
+    name: 'Infinite Prosperity Gateway',
+    frequencies: [111, 528, 888, 963],
+    category: 'manifestation',
+    description: 'Divine inspiration → love → abundance → unity field',
+    benefits: ['Prosperity', 'Divine inspiration', 'Unity consciousness'],
+    usage: 'Divine inspiration → love → abundance → unity field',
+    duration: 1800,
+    isPremium: true
+  },
+  {
+    id: 'bath-wealth-alignment',
+    name: 'Wealth Alignment Sequence',
+    frequencies: [396, 528, 639, 888],
+    category: 'manifestation',
+    description: 'Ascending sequence for wealth manifestation',
+    benefits: ['Wealth alignment', 'Financial abundance', 'Manifestation'],
+    usage: 'Play ascending; focus intention at each step',
+    duration: 1800,
+    isPremium: true
+  },
+  {
+    id: 'bath-quantum-creation',
+    name: 'Quantum Creation Bath',
+    frequencies: [8, 432, 999],
+    category: 'manifestation',
+    description: 'Theta creation space sealed with universal harmony + completion',
+    benefits: ['Quantum manifestation', 'Creation', 'Completion'],
+    usage: 'Theta creation space sealed with universal harmony + completion',
+    duration: 1800,
+    isPremium: true
+  },
+
+  // === METAPHYSICAL BATHS ===
+  {
+    id: 'bath-planetary-alignment',
+    name: 'Planetary Alignment Bath',
+    frequencies: [136.1, 210.42, 221.23],
+    category: 'metaphysical',
+    description: 'Connects Earth, Moon, and Venus energies',
+    benefits: ['Planetary alignment', 'Cosmic connection', 'Balance'],
+    usage: 'Connects Earth, Moon, and Venus energies',
+    duration: 1800,
+    isPremium: true
+  },
+  {
+    id: 'bath-cosmic-power',
+    name: 'Cosmic Power Field',
+    frequencies: [126.22, 144.72, 183.58],
+    category: 'metaphysical',
+    description: 'Invokes solar vitality, courage, and abundance',
+    benefits: ['Solar energy', 'Courage', 'Cosmic abundance'],
+    usage: 'Invokes solar vitality, courage, and abundance',
+    duration: 1800,
+    isPremium: true
+  },
+  {
+    id: 'bath-sacred-geometry',
+    name: 'Sacred Geometry Bath',
+    frequencies: [432, 528],
+    category: 'metaphysical',
+    description: 'Aligns with universal patterns using Fibonacci pulsing',
+    benefits: ['Sacred geometry', 'Universal patterns', 'Harmony'],
+    usage: 'Aligns with universal patterns using Fibonacci pulsing',
+    duration: 1800,
+    isPremium: true
+  },
+  {
+    id: 'bath-tartarian-levitation',
+    name: 'Tartarian Levitation Resonance',
+    frequencies: [7.83, 45, 852],
+    category: 'metaphysical',
+    description: 'Inspired by speculative Tartarian resonance tech',
+    benefits: ['Resonance tech', 'Levitation research', 'Angelic tones'],
+    usage: 'Blend Schumann grounding, standing-wave mid band, and angelic overtones',
+    duration: 1800,
+    isPremium: true
+  },
+  {
+    id: 'bath-angel-gateway',
+    name: 'Angel Gateway Bath',
+    frequencies: [111, 333, 639],
+    category: 'metaphysical',
+    description: 'Invites divine presence, healing, and guidance',
+    benefits: ['Angel connection', 'Divine presence', 'Guidance'],
+    usage: 'Invites divine presence, healing, and guidance',
+    duration: 1800,
+    isPremium: true
+  }
+];
+
+// Export bath count
+export const TOTAL_BATHS = FREQUENCY_BATHS.length;
+
+// Helper to get baths by category
+export const getBathsByCategory = (category: string) => {
+  return FREQUENCY_BATHS.filter(b => b.category === category);
+};
+
+// Helper to get available baths based on subscription
+export const getAvailableBaths = (subscriptionTier: string) => {
+  if (subscriptionTier === 'free') {
+    return FREQUENCY_BATHS.filter(b => !b.isPremium);
+  }
+  return FREQUENCY_BATHS;
+};
+
+console.log(`🎵 HealTone Library: ${TOTAL_FREQUENCIES} healing frequencies + ${TOTAL_BATHS} healing baths loaded!`);

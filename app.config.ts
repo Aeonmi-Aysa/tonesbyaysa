@@ -19,10 +19,11 @@ const config: ExpoConfig = {
     supportsTablet: true
   },
   android: {
-    package: 'com.darkmetaai.healtoneapp.dev',
+    package: 'com.darkmetaai.healtone',
+    versionCode: 1,
     adaptiveIcon: {
       foregroundImage: './assets/adaptive-icon.png',
-      backgroundColor: '#ffffff'
+      backgroundColor: '#0a0a0f'
     },
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false
@@ -35,6 +36,9 @@ const config: ExpoConfig = {
     'react-native-audio-api'
   ],
   extra: {
+    eas: {
+      projectId: '9c6bee36-9b16-4148-ab56-ea32b532a68e'
+    },
     supabaseUrl: process.env.SUPABASE_URL,
     supabaseAnonKey: process.env.SUPABASE_ANON_KEY,
     stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY,
