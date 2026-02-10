@@ -1,10 +1,15 @@
 import { ScrollView, StyleSheet, Text, View, Pressable, FlatList, Modal, Alert } from 'react-native';
+import { useNavigation, type NavigationProp } from '@react-navigation/native';
 import { useSessionStore, type SessionState } from '@/store/useSessionStore';
 import { useFavoritesStore } from '@/store/useFavoritesStore';
+import { useTheme } from '@/store/useThemeStore';
 import { FREQUENCIES, getAvailableFrequencies, FREQUENCY_BATHS, getAvailableBaths, type Frequency, type FrequencyBath } from '@/lib/frequencies';
-import { frequencyPlayer, playHealingFrequency, playSolfeggioFrequency, playChakraFrequency, playBinauralBeat, stopAllFrequencies, testAudio, playFrequencyBath } from '@/lib/audioEngine';
+import { testAudio } from '@/lib/audioEngineExpo';
+// REMOVED COMPLEX AUDIO ENGINE IMPORTS - USE DIRECT CALLS ONLY
 import { useState, useEffect, useRef } from 'react';
 import { SpectrumVisualizer } from '@/components/WaveformVisualizer';
+import { PulsingBackground } from '@/components/PulsingBackground';
+import { PricingScreen } from './PricingScreen';
 
 // Time-based frequency recommendations
 const getTimeBasedRecommendation = () => {
@@ -54,11 +59,14 @@ const getTimeBasedRecommendation = () => {
 };
 
 export function DashboardScreen() {
+  const navigation = useNavigation<NavigationProp<any>>();
   const profile = useSessionStore((state: SessionState) => state.profile);
   const { favorites, loadFavorites, addFavorite, removeFavorite, isFavorite } = useFavoritesStore();
+  const { colors, isDark } = useTheme();
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [playingFrequency, setPlayingFrequency] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'frequencies' | 'baths'>('frequencies');
+  const [showPricing, setShowPricing] = useState(false);
   
   // Sleep timer state
   const [sleepTimerMinutes, setSleepTimerMinutes] = useState<number | null>(null);
@@ -72,6 +80,16 @@ export function DashboardScreen() {
   const subscriptionTier = profile?.subscription_tier || 'free';
   const availableFrequencies = getAvailableFrequencies(subscriptionTier);
   const availableBaths = getAvailableBaths(subscriptionTier);
+
+  // PAYWALL MODAL FIX: Ensure PricingScreen renders without crashes
+  const handlePricingOpen = () => {
+    try {
+      setShowPricing(true);
+    } catch (error) {
+      console.error('Error opening pricing:', error);
+      Alert.alert('Error', 'Could not open pricing screen');
+    }
+  };
 
   // Load favorites on mount
   useEffect(() => {
@@ -135,10 +153,28 @@ export function DashboardScreen() {
     return [];
   };
 
+  // Get current frequency for pulsing background
+  const getCurrentFrequency = (): number => {
+    if (!playingFrequency) return 528; // Default
+    
+    // Check if it's a single frequency first
+    const freq = FREQUENCIES.find(f => f.id === playingFrequency);
+    if (freq) return freq.hz;
+    
+    // Check if it's a bath - use first frequency
+    const bath = FREQUENCY_BATHS.find(b => b.id === playingFrequency);
+    if (bath && bath.frequencies.length > 0) return bath.frequencies[0];
+    
+    return 528; // Default fallback
+  };
+
   const handleToggleFavorite = (id: string, type: 'frequency' | 'bath') => {
+    console.log('🔄 Toggle favorite:', id, type);
     if (isFavorite(id)) {
+      console.log('❌ Removing favorite:', id);
       removeFavorite(id, profile?.id);
     } else {
+      console.log('💜 Adding favorite:', id);
       addFavorite(id, type, profile?.id);
     }
   };
@@ -156,99 +192,178 @@ export function DashboardScreen() {
     { id: 'solfeggio', name: 'Solfeggio', count: availableFrequencies.filter(f => f.category === 'solfeggio').length },
     { id: 'chakra', name: 'Chakra', count: availableFrequencies.filter(f => f.category === 'chakra').length },
     { id: 'binaural', name: 'Binaural', count: availableFrequencies.filter(f => f.category === 'binaural').length },
-    { id: 'healing', name: 'Healing', count: availableFrequencies.filter(f => f.category === 'healing').length }
+    { id: 'healing', name: 'Wellness', count: availableFrequencies.filter(f => f.category === 'healing').length },
+    { id: 'rife', name: 'Rife', count: availableFrequencies.filter(f => f.category === 'rife').length },
+    { id: 'angel', name: 'Angel', count: availableFrequencies.filter(f => f.category === 'angel').length },
+    { id: 'crystal', name: 'Crystal', count: availableFrequencies.filter(f => f.category === 'crystal').length },
+    { id: 'planetary', name: 'Planetary', count: availableFrequencies.filter(f => f.category === 'planetary').length },
+    { id: 'organ', name: 'Organ', count: availableFrequencies.filter(f => f.category === 'organ').length },
+    { id: 'emotion', name: 'Emotion', count: availableFrequencies.filter(f => f.category === 'emotion').length },
+    { id: 'dna', name: 'DNA', count: availableFrequencies.filter(f => f.category === 'dna').length },
+    { id: 'brain', name: 'Brain', count: availableFrequencies.filter(f => f.category === 'brain').length },
+    { id: 'sleep', name: 'Sleep', count: availableFrequencies.filter(f => f.category === 'sleep').length },
+    { id: 'energy', name: 'Energy', count: availableFrequencies.filter(f => f.category === 'energy').length },
+    { id: 'manifestation', name: 'Manifest', count: availableFrequencies.filter(f => f.category === 'manifestation').length },
+    { id: 'color', name: 'Color', count: availableFrequencies.filter(f => f.category === 'color').length },
+    { id: 'schumann', name: 'Earth', count: availableFrequencies.filter(f => f.category === 'schumann').length },
+    { id: 'tesla', name: 'Tesla', count: availableFrequencies.filter(f => f.category === 'tesla').length },
+    { id: 'sacred', name: 'Sacred', count: availableFrequencies.filter(f => f.category === 'sacred').length },
+    { id: 'tibetan', name: 'Tibetan', count: availableFrequencies.filter(f => f.category === 'tibetan').length },
+    { id: 'vedic', name: 'Vedic', count: availableFrequencies.filter(f => f.category === 'vedic').length },
+    { id: 'egyptian', name: 'Egyptian', count: availableFrequencies.filter(f => f.category === 'egyptian').length },
   ];
 
   const bathCategories = [
     { id: 'all', name: 'All', count: availableBaths.length },
-    { id: 'healing', name: 'Healing', count: availableBaths.filter(b => b.category === 'healing').length },
+    { id: 'healing', name: 'Wellness', count: availableBaths.filter(b => b.category === 'healing').length },
     { id: 'mental', name: 'Mental', count: availableBaths.filter(b => b.category === 'mental').length },
     { id: 'spiritual', name: 'Spiritual', count: availableBaths.filter(b => b.category === 'spiritual').length },
     { id: 'emotional', name: 'Emotional', count: availableBaths.filter(b => b.category === 'emotional').length },
     { id: 'psychic', name: 'Psychic', count: availableBaths.filter(b => b.category === 'psychic').length },
     { id: 'manifestation', name: 'Manifest', count: availableBaths.filter(b => b.category === 'manifestation').length },
-    { id: 'metaphysical', name: 'Meta', count: availableBaths.filter(b => b.category === 'metaphysical').length }
+    { id: 'metaphysical', name: 'Meta', count: availableBaths.filter(b => b.category === 'metaphysical').length },
+    { id: 'sleep', name: 'Sleep', count: availableBaths.filter(b => b.category === 'sleep').length },
   ];
 
   const categories = viewMode === 'frequencies' ? frequencyCategories : bathCategories;
 
+  // COMPREHENSIVE STOP FUNCTION
+  const stopAllFrequencies = async () => {
+    try {
+      console.log('⏹️ STOPPING ALL AUDIO');
+      
+      // Import both the global player and Audio module
+      const [audioModule, engineModule] = await Promise.all([
+        import('expo-av'),
+        import('@/lib/audioEngineExpo')
+      ]);
+      
+      // Stop the global player
+      await engineModule.frequencyPlayerExpo.stop();
+      
+      // Also stop all Audio instances globally (backup cleanup)
+      try {
+        await audioModule.Audio.stopAndUnloadAsync();
+      } catch (e) {
+        // May not be available, ignore
+        console.log('🔇 Global audio stop not available');
+      }
+      
+      console.log('✅ All audio stopped');
+    } catch (error) {
+      console.error('❌ Stop failed:', error);
+    }
+  };
+
   const handlePlayFrequency = async (frequency: Frequency) => {
     try {
-      // Stop any currently playing frequency
-      if (playingFrequency) {
-        await stopAllFrequencies();
-        if (playingFrequency === frequency.id) {
-          setPlayingFrequency(null);
-          return; // Toggle off if same frequency
-        }
+      // Check if free user trying to access premium frequency
+      if (subscriptionTier === 'free' && frequency.isPremium) {
+        Alert.alert(
+          '🔒 Premium Feature',
+          'This frequency is only available with a paid subscription.\n\nUpgrade now to unlock all 500+ healing frequencies!',
+          [
+            { text: 'Cancel', onPress: () => {} },
+            {
+              text: 'Upgrade',
+              onPress: () => {
+                navigation.navigate('Paywall' as never);
+              }
+            }
+          ]
+        );
+        return;
       }
 
+      console.log('🎵 SIMPLE PLAY:', frequency.name, frequency.hz + 'Hz');
+      
+      // Check if same frequency is playing - stop it
+      if (playingFrequency === frequency.id) {
+        console.log('⏹️ Stopping same frequency');
+        await stopAllFrequencies();
+        setPlayingFrequency(null);
+        console.log('🔄 Frequency stopped');
+        return;
+      }
+      
+      // Stop any currently playing frequency first
+      if (playingFrequency) {
+        console.log('⏹️ Stopping different frequency first');
+        await stopAllFrequencies();
+      }
+
+      console.log('🎯 Starting new audio...');
       setPlayingFrequency(frequency.id);
       
-      // Convert duration from seconds to milliseconds
-      // Use a long duration (30 minutes) for continuous playback until user stops
-      const durationMs = 30 * 60 * 1000; // 30 minutes - effectively continuous
+      // USE GLOBAL PLAYER FOR CONSISTENT STATE
+      const { frequencyPlayerExpo } = await import('@/lib/audioEngineExpo');
+      await frequencyPlayerExpo.initialize();
       
-      // Determine playback method based on ACTUAL frequency Hz value, not just category
-      // Sub-20Hz frequencies need isochronic/binaural beats (they're below audible range)
-      // 20Hz and above are audible and should play as regular tones
-      const isSubAudible = frequency.hz < 20;
-      
-      if (isSubAudible && frequency.category === 'binaural') {
-        // For sub-audible brainwave entrainment (0.5Hz - 19Hz)
-        // Use isochronic tones with a carrier frequency
-        const carrierHz = 200; // Audible carrier tone
-        const brainwaveHz = frequency.hz; // Target brainwave frequency
-        await playBinauralBeat(carrierHz, brainwaveHz, durationMs);
+      // Just play the frequency - simple and reliable
+      if (frequency.hz < 20) {
+        // Sub-audible -> binaural beat
+        await frequencyPlayerExpo.playBinauralBeat(200, frequency.hz, 30000);
       } else {
-        // For audible frequencies (20Hz+), play the actual tone directly
-        switch (frequency.category) {
-          case 'solfeggio':
-            await playSolfeggioFrequency(frequency.hz, durationMs);
-            break;
-          case 'chakra':
-            await playChakraFrequency(frequency.hz, durationMs);
-            break;
-          case 'binaural':
-            // 20Hz+ "binaural" frequencies like Gamma 40Hz are actually audible
-            // Play them as regular healing tones
-            await playHealingFrequency(frequency.hz, durationMs);
-            break;
-          case 'healing':
-          default:
-            await playHealingFrequency(frequency.hz, durationMs);
-            break;
-        }
+        // Audible -> direct tone
+        await frequencyPlayerExpo.playFrequency(frequency.hz, 30000, 'sine');
       }
-
-      // Note: User manually stops by tapping again or selecting another frequency
-      // No auto-stop timeout needed for continuous playback
-
+      
+      console.log('✅ Audio started successfully');
     } catch (error) {
-      console.error('Error playing frequency:', error);
+      console.error('❌ Audio failed:', error);
+      Alert.alert('Audio Error', String(error));
       setPlayingFrequency(null);
     }
   };
 
   const handlePlayBath = async (bath: FrequencyBath) => {
     try {
-      // Stop any currently playing audio
-      if (playingFrequency) {
-        await stopAllFrequencies();
-        if (playingFrequency === bath.id) {
-          setPlayingFrequency(null);
-          return; // Toggle off if same bath
-        }
+      // Check if free user trying to access premium bath
+      if (subscriptionTier === 'free' && bath.isPremium) {
+        Alert.alert(
+          '🔒 Premium Feature',
+          'This frequency bath is only available with a paid subscription.\n\nUpgrade now to unlock all healing experiences!',
+          [
+            { text: 'Cancel', onPress: () => {} },
+            {
+              text: 'Upgrade',
+              onPress: () => {
+                navigation.navigate('Paywall' as never);
+              }
+            }
+          ]
+        );
+        return;
       }
 
+      console.log('🛁 SIMPLE BATH PLAY:', bath.name);
+      
+      // Check if same bath is playing - stop it
+      if (playingFrequency === bath.id) {
+        console.log('⏹️ Stopping same bath');
+        await stopAllFrequencies();
+        setPlayingFrequency(null);
+        console.log('🔄 Bath stopped');
+        return;
+      }
+
+      // Stop any currently playing audio first
+      if (playingFrequency) {
+        console.log('⏹️ Stopping different audio first');
+        await stopAllFrequencies();
+      }
+
+      console.log('🎯 Starting new bath...');
       setPlayingFrequency(bath.id);
       
-      // Play the bath (layered frequencies)
-      const durationMs = 30 * 60 * 1000; // 30 minutes
-      await playFrequencyBath(bath.frequencies, durationMs);
-
+      // USE PROGRESSIVE BATH FUNCTION FOR BEAUTIFUL LAYERING
+      const { playFrequencyBath } = await import('@/lib/audioEngineExpo');
+      await playFrequencyBath(bath.frequencies, 30000);
+      
+      console.log('✅ Bath audio started');
     } catch (error) {
-      console.error('Error playing bath:', error);
+      console.error('❌ Bath failed:', error);
+      Alert.alert('Bath Error', String(error));
       setPlayingFrequency(null);
     }
   };
@@ -258,48 +373,86 @@ export function DashboardScreen() {
     const isFav = isFavorite(item.id);
     
     return (
-      <View style={[styles.frequencyCard, isFav && styles.favoriteGlow]}>
+      <View style={[
+        styles.frequencyCard, 
+        { backgroundColor: colors.surface, borderColor: colors.border },
+        isFav && (isDark ? styles.favoriteGlow : {
+          borderColor: '#ffff00',
+          borderWidth: 3,
+          shadowColor: '#ffff00',
+          shadowOpacity: 0.9,
+          shadowRadius: 15,
+          shadowOffset: { width: 0, height: 0 },
+          elevation: 12,
+          backgroundColor: '#fffef0'
+        })
+      ]}>
         <View style={styles.frequencyHeader}>
-          <Text style={styles.frequencyName}>{item.name}</Text>
+          <Text style={[styles.frequencyName, { color: colors.text }]}>{item.name}</Text>
           <View style={styles.headerRight}>
             <Pressable 
               style={styles.favoriteBtn}
-              onPress={() => handleToggleFavorite(item.id, 'frequency')}
+              onPress={() => {
+                console.log('💜 Favorite button pressed:', item.name);
+                handleToggleFavorite(item.id, 'frequency');
+              }}
             >
               <Text style={[styles.favoriteIcon, isFav && styles.favoriteIconActive]}>
                 {isFav ? '💜' : '🤍'}
               </Text>
             </Pressable>
-            <View style={styles.frequencyBadge}>
-              <Text style={styles.frequencyHz}>{item.hz}Hz</Text>
+            <View style={[styles.frequencyBadge, { backgroundColor: colors.primary }]}>
+              <Text style={[styles.frequencyHz, { color: '#ffffff' }]}>{item.hz}Hz</Text>
             </View>
           </View>
         </View>
-        <Text style={styles.frequencyDescription}>{item.description}</Text>
+        <Text style={[styles.frequencyDescription, { color: colors.textSecondary }]}>{item.description}</Text>
         <View style={styles.benefitsContainer}>
           {item.benefits.slice(0, 3).map((benefit, index) => (
-            <Text key={index} style={styles.benefit}>• {benefit}</Text>
+            <Text key={index} style={[styles.benefit, { color: colors.textMuted }]}>• {benefit}</Text>
           ))}
         </View>
         <Pressable 
           style={[
-            styles.playButton, 
-            isPlaying && styles.playButtonPlaying,
-            item.isPremium && subscriptionTier === 'free' && styles.playButtonDisabled
+            styles.playButton,
+            { 
+              backgroundColor: isDark ? '#1e293b' : colors.surface, 
+              borderColor: isDark ? colors.primary : '#000000',
+              borderWidth: isDark ? 1 : 3,
+              shadowColor: isDark ? colors.primary : '#ffff00',
+              shadowOffset: { width: 0, height: 0 },
+              shadowOpacity: isDark ? 0.3 : 0.8,
+              shadowRadius: isDark ? 8 : 12,
+              elevation: isDark ? 6 : 12
+            },
+            isPlaying && { 
+              backgroundColor: colors.primary,
+              shadowColor: colors.primary,
+              shadowOpacity: 0.6
+            },
+            !isDark && {
+              borderColor: '#ffff00',
+              shadowColor: '#ffff00',
+              backgroundColor: '#ffffff'
+            }
           ]}
-          onPress={() => handlePlayFrequency(item)}
-          disabled={item.isPremium && subscriptionTier === 'free'}
+          onPress={() => {
+            console.log('🎯 Regular play button pressed:', item.name);
+            handlePlayFrequency(item);
+          }}
+          disabled={false}
         >
           <Text style={[
-            styles.playButtonText, 
-            item.isPremium && subscriptionTier === 'free' && styles.playButtonTextDisabled
-          ]}>
-            {item.isPremium && subscriptionTier === 'free' 
-              ? 'Premium' 
-              : isPlaying 
-              ? '⏸️ Stop' 
-              : '▶️ Play'
+            styles.playButtonText,
+            { 
+              color: isPlaying ? '#fff' : (isDark ? colors.primary : '#000000'),
+              fontWeight: '800',
+              textShadowColor: isDark ? 'transparent' : '#ffff00',
+              textShadowOffset: { width: 0, height: 0 },
+              textShadowRadius: isDark ? 0 : 3
             }
+          ]}>
+            {isPlaying ? '⏸️ Stop' : '▶️ Play'}
           </Text>
         </Pressable>
       </View>
@@ -317,9 +470,23 @@ export function DashboardScreen() {
     const isFav = isFavorite(item.id);
     
     return (
-      <View style={[styles.frequencyCard, styles.bathCard, isFav && styles.favoriteGlow]}>
+      <View style={[
+        styles.frequencyCard, 
+        styles.bathCard, 
+        { backgroundColor: colors.surface, borderColor: colors.border },
+        isFav && (isDark ? styles.favoriteGlow : { 
+          borderColor: '#ffff00',
+          borderWidth: 3,
+          shadowColor: '#ffff00',
+          shadowOpacity: 0.9,
+          shadowRadius: 15,
+          shadowOffset: { width: 0, height: 0 },
+          elevation: 12,
+          backgroundColor: '#fffef0'
+        })
+      ]}>
         <View style={styles.frequencyHeader}>
-          <Text style={styles.frequencyName}>🛁 {item.name}</Text>
+          <Text style={[styles.frequencyName, { color: colors.text }]}>🛁 {item.name}</Text>
           <View style={styles.headerRight}>
             <Pressable 
               style={styles.favoriteBtn}
@@ -329,17 +496,17 @@ export function DashboardScreen() {
                 {isFav ? '💜' : '🤍'}
               </Text>
             </Pressable>
-            <View style={[styles.frequencyBadge, styles.bathBadge]}>
-              <Text style={styles.frequencyHz}>{item.frequencies.length} tones</Text>
+            <View style={[styles.frequencyBadge, styles.bathBadge, { backgroundColor: isDark ? '#0891b2' : '#0d9488' }]}>
+              <Text style={[styles.frequencyHz, { color: '#ffffff' }]}>{item.frequencies.length} tones</Text>
             </View>
           </View>
         </View>
-        <Text style={styles.frequencyDescription}>{item.description}</Text>
-        <Text style={styles.bathFrequencies}>
+        <Text style={[styles.frequencyDescription, { color: colors.textSecondary }]}>{item.description}</Text>
+        <Text style={[styles.bathFrequencies, { color: colors.textMuted }]}>
           Frequencies: {item.frequencies.map(f => `${f}Hz`).join(' + ')}
         </Text>
         {needsHeadphones && (
-          <View style={styles.headphoneNote}>
+          <View style={[styles.headphoneNote, { backgroundColor: isDark ? 'rgba(251, 191, 36, 0.1)' : 'rgba(251, 191, 36, 0.15)' }]}>
             <Text style={styles.headphoneNoteText}>
               🎧 For optimal experience with low frequencies, use headphones
             </Text>
@@ -347,13 +514,31 @@ export function DashboardScreen() {
         )}
         <View style={styles.benefitsContainer}>
           {item.benefits.slice(0, 3).map((benefit, index) => (
-            <Text key={index} style={styles.benefit}>• {benefit}</Text>
+            <Text key={index} style={[styles.benefit, { color: colors.textMuted }]}>• {benefit}</Text>
           ))}
         </View>
         <Pressable 
           style={[
             styles.playButton, 
-            isPlaying && styles.playButtonPlaying,
+            { 
+              backgroundColor: isDark ? '#1e293b' : colors.surface, 
+              borderColor: isDark ? '#0891b2' : '#000000',
+              borderWidth: isDark ? 1 : 3,
+              shadowColor: isDark ? '#0891b2' : '#ffff00',
+              shadowOffset: { width: 0, height: 0 },
+              shadowOpacity: isDark ? 0.3 : 0.8,
+              shadowRadius: isDark ? 8 : 12,
+              elevation: isDark ? 6 : 12
+            },
+            isPlaying && { 
+              backgroundColor: isDark ? '#0891b2' : '#0d9488',
+              shadowOpacity: 0.6
+            },
+            !isDark && {
+              borderColor: '#ffff00',
+              shadowColor: '#ffff00',
+              backgroundColor: '#ffffff'
+            },
             item.isPremium && subscriptionTier === 'free' && styles.playButtonDisabled
           ]}
           onPress={() => handlePlayBath(item)}
@@ -361,6 +546,13 @@ export function DashboardScreen() {
         >
           <Text style={[
             styles.playButtonText, 
+            { 
+              color: isPlaying ? '#fff' : (isDark ? '#0891b2' : '#000000'),
+              fontWeight: '800',
+              textShadowColor: isDark ? 'transparent' : '#ffff00',
+              textShadowOffset: { width: 0, height: 0 },
+              textShadowRadius: isDark ? 0 : 3
+            },
             item.isPremium && subscriptionTier === 'free' && styles.playButtonTextDisabled
           ]}>
             {item.isPremium && subscriptionTier === 'free' 
@@ -376,35 +568,51 @@ export function DashboardScreen() {
   };
 
   return (
-    <ScrollView style={styles.container}>
+    <PulsingBackground 
+      isActive={!!playingFrequency} 
+      frequency={getCurrentFrequency()}
+      intensity="medium"
+    >
+      <ScrollView style={[styles.container, { backgroundColor: 'transparent' }]}>
       <View style={styles.header}>
-        <Text style={styles.heading}>Healing Library</Text>
-        <Text style={styles.subheading}>Welcome back, {profile?.full_name || 'friend'}</Text>
+        <Text style={[styles.heading, { color: colors.text }]}>Wellness Library</Text>
+        <Text style={[styles.subheading, { color: colors.textSecondary }]}>Welcome back, {profile?.full_name || 'friend'}</Text>
         
-        <View style={styles.statusCard}>
-          <Text style={styles.statusLabel}>Subscription</Text>
-          <Text style={styles.statusValue}>{subscriptionTier.toUpperCase()}</Text>
-          <Text style={styles.statusHint}>
-            {subscriptionTier === 'free' 
-              ? `${availableFrequencies.length} frequencies + ${availableBaths.filter(b => !b.isPremium).length} baths` 
-              : `${availableFrequencies.length} frequencies + ${availableBaths.length} baths`}
+        {/* Wellness Disclaimer Banner */}
+        <View style={[styles.disclaimerBanner, { backgroundColor: isDark ? 'rgba(251, 191, 36, 0.1)' : 'rgba(251, 191, 36, 0.15)', borderColor: isDark ? 'rgba(251, 191, 36, 0.3)' : 'rgba(251, 191, 36, 0.4)' }]}>
+          <Text style={styles.disclaimerBannerText}>
+            🔔 For relaxation & wellness only • Not medical advice
           </Text>
         </View>
+        
+        <Pressable onPress={handlePricingOpen}>
+          <View style={[styles.statusCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.statusLabel, { color: colors.textSecondary }]}>Subscription</Text>
+            <Text style={[styles.statusValue, { color: colors.primary }]}>{subscriptionTier.toUpperCase()}</Text>
+            <Text style={[styles.statusHint, { color: colors.textMuted }]}>
+              {subscriptionTier === 'free' 
+                ? `${availableFrequencies.length} frequencies + ${availableBaths.filter(b => !b.isPremium).length} baths` 
+                : `${availableFrequencies.length} frequencies + ${availableBaths.length} baths`}
+            </Text>
+          </View>
+        </Pressable>
+        
+
       </View>
 
       {/* Daily Recommendation Card */}
-      <View style={styles.dailyRecCard}>
+      <View style={[styles.dailyRecCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <View style={styles.dailyRecHeader}>
           <Text style={styles.dailyRecEmoji}>{dailyRec.emoji}</Text>
           <View style={styles.dailyRecInfo}>
-            <Text style={styles.dailyRecMood}>{dailyRec.mood}</Text>
-            <Text style={styles.dailyRecTip}>{dailyRec.tip}</Text>
+            <Text style={[styles.dailyRecMood, { color: colors.text }]}>{dailyRec.mood}</Text>
+            <Text style={[styles.dailyRecTip, { color: colors.textSecondary }]}>{dailyRec.tip}</Text>
           </View>
         </View>
         <View style={styles.dailyRecButtons}>
           {dailyRec.freq && (
             <Pressable 
-              style={[styles.dailyRecBtn, playingFrequency === dailyRec.freq.id && styles.dailyRecBtnPlaying]}
+              style={[styles.dailyRecBtn, { backgroundColor: colors.primary }, playingFrequency === dailyRec.freq.id && styles.dailyRecBtnPlaying]}
               onPress={() => dailyRec.freq && handlePlayFrequency(dailyRec.freq)}
             >
               <Text style={styles.dailyRecBtnText}>
@@ -414,7 +622,7 @@ export function DashboardScreen() {
           )}
           {dailyRec.bath && (
             <Pressable 
-              style={[styles.dailyRecBtn, styles.dailyRecBtnBath, playingFrequency === dailyRec.bath.id && styles.dailyRecBtnPlaying]}
+              style={[styles.dailyRecBtn, styles.dailyRecBtnBath, { backgroundColor: isDark ? '#0891b2' : '#0d9488' }, playingFrequency === dailyRec.bath.id && styles.dailyRecBtnPlaying]}
               onPress={() => dailyRec.bath && handlePlayBath(dailyRec.bath)}
             >
               <Text style={styles.dailyRecBtnText}>
@@ -427,17 +635,17 @@ export function DashboardScreen() {
 
       {/* Sleep Timer */}
       {playingFrequency && (
-        <View style={styles.sleepTimerBar}>
+        <View style={[styles.sleepTimerBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           {sleepTimerMinutes ? (
             <View style={styles.sleepTimerActive}>
-              <Text style={styles.sleepTimerText}>⏰ Sleep Timer: {formatSleepTimerRemaining()}</Text>
-              <Pressable style={styles.sleepTimerCancel} onPress={cancelSleepTimer}>
+              <Text style={[styles.sleepTimerText, { color: colors.text }]}>⏰ Sleep Timer: {formatSleepTimerRemaining()}</Text>
+              <Pressable style={[styles.sleepTimerCancel, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : 'rgba(239, 68, 68, 0.1)' }]} onPress={cancelSleepTimer}>
                 <Text style={styles.sleepTimerCancelText}>✕</Text>
               </Pressable>
             </View>
           ) : (
             <Pressable style={styles.sleepTimerBtn} onPress={() => setShowSleepTimerModal(true)}>
-              <Text style={styles.sleepTimerBtnText}>⏰ Set Sleep Timer</Text>
+              <Text style={[styles.sleepTimerBtnText, { color: colors.primary }]}>⏰ Set Sleep Timer</Text>
             </Pressable>
           )}
         </View>
@@ -446,18 +654,22 @@ export function DashboardScreen() {
       {/* Sleep Timer Modal */}
       <Modal visible={showSleepTimerModal} transparent animationType="fade">
         <Pressable style={styles.modalOverlay} onPress={() => setShowSleepTimerModal(false)}>
-          <View style={styles.sleepTimerModal}>
-            <Text style={styles.sleepTimerModalTitle}>⏰ Sleep Timer</Text>
-            <Text style={styles.sleepTimerModalSubtitle}>Stop audio after:</Text>
+          <View style={[styles.sleepTimerModal, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.sleepTimerModalTitle, { color: colors.text }]}>⏰ Sleep Timer</Text>
+            <Text style={[styles.sleepTimerModalSubtitle, { color: colors.textSecondary }]}>Stop audio after:</Text>
             <View style={styles.sleepTimerOptions}>
               {[5, 10, 15, 30, 45, 60].map(mins => (
-                <Pressable key={mins} style={styles.sleepTimerOption} onPress={() => startSleepTimer(mins)}>
-                  <Text style={styles.sleepTimerOptionText}>{mins} min</Text>
+                <Pressable 
+                  key={mins} 
+                  style={[styles.sleepTimerOption, { backgroundColor: colors.background, borderColor: colors.border }]} 
+                  onPress={() => startSleepTimer(mins)}
+                >
+                  <Text style={[styles.sleepTimerOptionText, { color: colors.text }]}>{mins} min</Text>
                 </Pressable>
               ))}
             </View>
-            <Pressable style={styles.sleepTimerModalClose} onPress={() => setShowSleepTimerModal(false)}>
-              <Text style={styles.sleepTimerModalCloseText}>Cancel</Text>
+            <Pressable style={[styles.sleepTimerModalClose, { borderTopColor: colors.border }]} onPress={() => setShowSleepTimerModal(false)}>
+              <Text style={[styles.sleepTimerModalCloseText, { color: colors.textMuted }]}>Cancel</Text>
             </Pressable>
           </View>
         </Pressable>
@@ -465,8 +677,8 @@ export function DashboardScreen() {
 
       {/* Real-time Visualizer - shows when playing */}
       {playingFrequency && (
-        <View style={styles.visualizerSection}>
-          <Text style={styles.visualizerLabel}>🎵 Now Playing</Text>
+        <View style={[styles.visualizerSection, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[styles.visualizerLabel, { color: colors.text }]}>🎵 Now Playing</Text>
           <SpectrumVisualizer 
             isPlaying={!!playingFrequency}
             frequencies={getPlayingFrequencies()}
@@ -477,21 +689,33 @@ export function DashboardScreen() {
       )}
 
       {/* View Mode Toggle */}
-      <View style={styles.modeToggle}>
+      <View style={[styles.modeToggle, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <Pressable
-          style={[styles.modeButton, viewMode === 'frequencies' && styles.modeButtonActive]}
+          style={[
+            styles.modeButton, 
+            { backgroundColor: viewMode === 'frequencies' ? colors.primary : 'transparent' }
+          ]}
           onPress={() => { setViewMode('frequencies'); setSelectedCategory('all'); }}
         >
-          <Text style={[styles.modeButtonText, viewMode === 'frequencies' && styles.modeButtonTextActive]}>
+          <Text style={[
+            styles.modeButtonText, 
+            { color: viewMode === 'frequencies' ? '#ffffff' : colors.textSecondary }
+          ]}>
             🎵 Single Frequencies
           </Text>
         </Pressable>
         <Pressable
-          style={[styles.modeButton, viewMode === 'baths' && styles.modeButtonActive]}
+          style={[
+            styles.modeButton, 
+            { backgroundColor: viewMode === 'baths' ? colors.primary : 'transparent' }
+          ]}
           onPress={() => { setViewMode('baths'); setSelectedCategory('all'); }}
         >
-          <Text style={[styles.modeButtonText, viewMode === 'baths' && styles.modeButtonTextActive]}>
-            🛁 Healing Baths
+          <Text style={[
+            styles.modeButtonText, 
+            { color: viewMode === 'baths' ? '#ffffff' : colors.textSecondary }
+          ]}>
+            🛁 Wellness Baths
           </Text>
         </Pressable>
       </View>
@@ -500,23 +724,26 @@ export function DashboardScreen() {
         {categories.map((category) => (
           <Pressable
             key={category.id}
-            style={[styles.categoryButton, selectedCategory === category.id && styles.categoryButtonActive]}
+            style={[
+              styles.categoryButton, 
+              { 
+                backgroundColor: selectedCategory === category.id ? colors.primary : colors.surface,
+                borderColor: selectedCategory === category.id ? colors.primary : colors.border,
+              }
+            ]}
             onPress={() => setSelectedCategory(category.id)}
           >
-            <Text style={[styles.categoryText, selectedCategory === category.id && styles.categoryTextActive]}>
+            <Text style={[
+              styles.categoryText, 
+              { color: selectedCategory === category.id ? '#ffffff' : colors.textSecondary }
+            ]}>
               {category.name} ({category.count})
             </Text>
           </Pressable>
         ))}
       </ScrollView>
 
-      {/* Audio Test Button */}
-      <Pressable 
-        style={styles.testButton}
-        onPress={() => testAudio()}
-      >
-        <Text style={styles.testButtonText}>🧪 Test Audio System</Text>
-      </Pressable>
+
 
       {viewMode === 'frequencies' ? (
         <FlatList
@@ -538,6 +765,18 @@ export function DashboardScreen() {
         />
       )}
     </ScrollView>
+
+    {/* Pricing Modal */}
+    <Modal 
+      visible={showPricing} 
+      animationType="slide" 
+      transparent={false}
+      onRequestClose={() => setShowPricing(false)}
+    >
+      <PricingScreen onDismiss={() => setShowPricing(false)} />
+    </Modal>
+
+    </PulsingBackground>
   );
 }
 
@@ -558,6 +797,21 @@ const styles = StyleSheet.create({
   subheading: {
     color: '#94a3b8',
     fontSize: 16
+  },
+  disclaimerBanner: {
+    backgroundColor: 'rgba(251, 191, 36, 0.1)',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(251, 191, 36, 0.3)'
+  },
+  disclaimerBannerText: {
+    color: '#fbbf24',
+    fontSize: 12,
+    textAlign: 'center',
+    fontWeight: '500'
   },
   statusCard: {
     backgroundColor: '#0f172a',
@@ -638,7 +892,7 @@ const styles = StyleSheet.create({
     fontSize: 18
   },
   favoriteIconActive: {
-    transform: [{ scale: 1.1 }]
+    // Removed transform scale to prevent UI jumping
   },
   favoriteGlow: {
     borderColor: '#be185d',
@@ -664,7 +918,7 @@ const styles = StyleSheet.create({
     borderRadius: 12
   },
   frequencyHz: {
-    color: '#a855f7',
+    color: '#ffffff',
     fontSize: 14,
     fontWeight: '600'
   },
@@ -692,7 +946,6 @@ const styles = StyleSheet.create({
   },
   playButtonPlaying: {
     backgroundColor: '#ef4444', // Red color when playing
-    transform: [{ scale: 0.98 }], // Slightly smaller when active
   },
   playButtonText: {
     color: '#ffffff',
@@ -701,20 +954,6 @@ const styles = StyleSheet.create({
   },
   playButtonTextDisabled: {
     color: '#9ca3af'
-  },
-  testButton: {
-    backgroundColor: '#059669',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginVertical: 10,
-    alignSelf: 'center'
-  },
-  testButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '700'
   },
   modeToggle: {
     flexDirection: 'row',

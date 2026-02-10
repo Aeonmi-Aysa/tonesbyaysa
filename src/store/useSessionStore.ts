@@ -11,6 +11,8 @@ export type Profile = {
   subscription_status: string | null;
   is_admin?: boolean;
   avatar_url?: string | null;
+  trial_started_at?: string | null;
+  trial_ends_at?: string | null;
 };
 
 export type SessionState = {
@@ -30,7 +32,7 @@ export const useSessionStore = create<SessionState>((set) => ({
 }));
 
 // Map subscription tiers to a simple numeric level for gating logic.
-// Level 1: free, 2: weekly, 3: lifetime.
+// Level 1: free, 2: weekly, 3: lifetime
 export const getTierLevel = (tier: SubscriptionTier | null | undefined): 1 | 2 | 3 => {
   switch (tier) {
     case 'weekly':

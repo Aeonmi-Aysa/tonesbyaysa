@@ -3,8 +3,8 @@ import { FlatList, Pressable, ScrollView, StyleSheet, Text, View, Alert, Refresh
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSessionStore, type SessionState } from '@/store/useSessionStore';
 import { useFavoritesStore } from '@/store/useFavoritesStore';
+import { useTheme } from '@/store/useThemeStore';
 import { FREQUENCIES, FREQUENCY_BATHS, type Frequency, type FrequencyBath } from '@/lib/frequencies';
-import { frequencyPlayer, playFrequencyBath, stopAllFrequencies, playHealingFrequency } from '@/lib/audioEngine';
 
 // Custom bath interface (from composer)
 interface CustomBath {
@@ -19,6 +19,7 @@ interface CustomBath {
 export function FavoritesScreen() {
   const profile = useSessionStore((state: SessionState) => state.profile);
   const { favorites, loadFavorites, isFavorite, removeFavorite } = useFavoritesStore();
+  const { colors, isDark } = useTheme();
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [customBaths, setCustomBaths] = useState<CustomBath[]>([]);
   const [activeSection, setActiveSection] = useState<'tones' | 'baths' | 'custom'>('tones');
@@ -75,39 +76,98 @@ export function FavoritesScreen() {
 
   const handlePlayFrequency = async (freq: Frequency) => {
     if (playingId === freq.id) {
-      await stopAllFrequencies();
+      // Stop current
+      try {
+        const { stopAllFrequencies } = await import('@/lib/audioEngineExpo');
+        await stopAllFrequencies();
+      } catch (error) {
+        console.error('Stop failed:', error);
+      }
       setPlayingId(null);
       return;
     }
     
-    await stopAllFrequencies();
-    setPlayingId(freq.id);
-    await playHealingFrequency(freq.hz, 30 * 60 * 1000);
+    // Stop any current and play new
+    try {
+      const { stopAllFrequencies, frequencyPlayerExpo } = await import('@/lib/audioEngineExpo');
+      await stopAllFrequencies();
+      await frequencyPlayerExpo.initialize();
+      
+      setPlayingId(freq.id);
+      
+      if (freq.hz < 20) {
+        await frequencyPlayerExpo.playBinauralBeat(200, freq.hz, 30000);
+      } else {
+        await frequencyPlayerExpo.playFrequency(freq.hz, 30000, 'sine');
+      }
+    } catch (error) {
+      console.error('Play failed:', error);
+      Alert.alert('Audio Error', String(error));
+      setPlayingId(null);
+    }
   };
 
   const handlePlayBath = async (bath: FrequencyBath) => {
     if (playingId === bath.id) {
-      await stopAllFrequencies();
+      // Stop current
+      try {
+        const { stopAllFrequencies } = await import('@/lib/audioEngineExpo');
+        await stopAllFrequencies();
+      } catch (error) {
+        console.error('Stop failed:', error);
+      }
       setPlayingId(null);
       return;
     }
     
-    await stopAllFrequencies();
-    setPlayingId(bath.id);
-    await playFrequencyBath(bath.frequencies, 30 * 60 * 1000);
+    // Stop any current and play new
+    try {
+      const { stopAllFrequencies, playFrequencyBath } = await import('@/lib/audioEngineExpo');
+      await stopAllFrequencies();
+      
+      setPlayingId(bath.id);
+      
+      // USE PROGRESSIVE BATH FUNCTION FOR FULL LAYERED EXPERIENCE
+      console.log('🛁 FAVORITES BATH PLAY:', bath.name, 'with', bath.frequencies.length, 'frequencies');
+      await playFrequencyBath(bath.frequencies, 30000);
+      console.log('✅ Favorites bath started with full progressive layering');
+    } catch (error) {
+      console.error('Bath play failed:', error);
+      Alert.alert('Audio Error', String(error));
+      setPlayingId(null);
+    }
   };
 
   const handlePlayCustomBath = async (bath: CustomBath) => {
     if (playingId === bath.id) {
-      await stopAllFrequencies();
+      // Stop current
+      try {
+        const { stopAllFrequencies } = await import('@/lib/audioEngineExpo');
+        await stopAllFrequencies();
+      } catch (error) {
+        console.error('Stop failed:', error);
+      }
       setPlayingId(null);
       return;
     }
     
-    await stopAllFrequencies();
-    setPlayingId(bath.id);
-    const hzList = bath.layers.map(l => l.hz);
-    await playFrequencyBath(hzList, 30 * 60 * 1000);
+    // Stop any current and play new
+    try {
+      const { stopAllFrequencies, playFrequencyBath } = await import('@/lib/audioEngineExpo');
+      await stopAllFrequencies();
+      
+      setPlayingId(bath.id);
+      
+      // USE PROGRESSIVE BATH FUNCTION FOR FULL LAYERED EXPERIENCE
+      const frequencies = bath.layers.map(layer => layer.hz);
+      console.log('🛁 FAVORITES CUSTOM BATH PLAY:', bath.title, 'with', frequencies.length, 'frequencies');
+      await playFrequencyBath(frequencies, 30000);
+      console.log('✅ Favorites custom bath started with full progressive layering');
+    } catch (error) {
+      console.error('Custom bath play failed:', error);
+      Alert.alert('Audio Error', String(error));
+      setPlayingId(null);
+    }
   };
 
   const handleRemoveFavorite = (id: string) => {
@@ -129,12 +189,21 @@ export function FavoritesScreen() {
     const isPlaying = playingId === item.id;
     
     return (
-      <View style={[styles.card, styles.favoriteGlow]}>
+      <View style={[
+        styles.card, 
+        { 
+          backgroundColor: colors.surface, 
+          borderColor: isDark ? '#be185d' : '#ec4899',
+          shadowColor: isDark ? '#be185d' : '#ec4899',
+        }
+      ]}>
         <View style={styles.cardHeader}>
-          <Text style={styles.cardName}>{item.name}</Text>
-          <Text style={styles.cardHz}>{item.hz}Hz</Text>
+          <Text style={[styles.cardName, { color: colors.accent }]}>{item.name}</Text>
+          <Text style={[styles.cardHz, { color: colors.primary, backgroundColor: isDark ? '#1e1b4b' : '#ede9fe' }]}>
+            {item.hz}Hz
+          </Text>
         </View>
-        <Text style={styles.cardDesc}>{item.description}</Text>
+        <Text style={[styles.cardDesc, { color: colors.textSecondary }]}>{item.description}</Text>
         <View style={styles.cardActions}>
           <Pressable 
             style={[styles.playBtn, isPlaying && styles.stopBtn]}
@@ -143,7 +212,7 @@ export function FavoritesScreen() {
             <Text style={styles.playBtnText}>{isPlaying ? '⏹️ Stop' : '▶️ Play'}</Text>
           </Pressable>
           <Pressable 
-            style={styles.unfavBtn}
+            style={[styles.unfavBtn, { backgroundColor: isDark ? '#374151' : '#e5e7eb' }]}
             onPress={() => handleRemoveFavorite(item.id)}
           >
             <Text style={styles.unfavBtnText}>💔</Text>
@@ -158,17 +227,26 @@ export function FavoritesScreen() {
     const hasLowFreq = item.frequencies.some(f => f < 80);
     
     return (
-      <View style={[styles.card, styles.favoriteGlow]}>
+      <View style={[
+        styles.card, 
+        { 
+          backgroundColor: colors.surface, 
+          borderColor: isDark ? '#0891b2' : '#0d9488',
+          shadowColor: isDark ? '#0891b2' : '#0d9488',
+        }
+      ]}>
         <View style={styles.cardHeader}>
-          <Text style={styles.cardName}>🛁 {item.name}</Text>
-          <Text style={styles.cardHz}>{item.frequencies.length} tones</Text>
+          <Text style={[styles.cardName, { color: colors.accent }]}>🛁 {item.name}</Text>
+          <Text style={[styles.cardHz, { color: colors.primary, backgroundColor: isDark ? '#1e1b4b' : '#ede9fe' }]}>
+            {item.frequencies.length} tones
+          </Text>
         </View>
-        <Text style={styles.cardDesc}>{item.description}</Text>
-        <Text style={styles.freqList}>
+        <Text style={[styles.cardDesc, { color: colors.textSecondary }]}>{item.description}</Text>
+        <Text style={[styles.freqList, { color: isDark ? '#c084fc' : '#9333ea' }]}>
           {item.frequencies.map(f => `${f}Hz`).join(' + ')}
         </Text>
         {hasLowFreq && (
-          <Text style={styles.headphoneNote}>🎧 Use headphones for best experience</Text>
+          <Text style={[styles.headphoneNote, { color: isDark ? '#c4b5fd' : '#7c3aed' }]}>🎧 Use headphones for best experience</Text>
         )}
         <View style={styles.cardActions}>
           <Pressable 
@@ -178,7 +256,7 @@ export function FavoritesScreen() {
             <Text style={styles.playBtnText}>{isPlaying ? '⏹️ Stop' : '▶️ Play'}</Text>
           </Pressable>
           <Pressable 
-            style={styles.unfavBtn}
+            style={[styles.unfavBtn, { backgroundColor: isDark ? '#374151' : '#e5e7eb' }]}
             onPress={() => handleRemoveFavorite(item.id)}
           >
             <Text style={styles.unfavBtnText}>💔</Text>
@@ -193,19 +271,30 @@ export function FavoritesScreen() {
     const hasLowFreq = item.layers.some(l => l.hz < 80);
     
     return (
-      <View style={[styles.card, styles.customBathGlow]}>
-        <View style={styles.customIndicator}>
+      <View style={[
+        styles.card, 
+        { 
+          backgroundColor: colors.surface, 
+          borderColor: isDark ? '#7c3aed' : '#8b5cf6',
+          shadowColor: isDark ? '#7c3aed' : '#8b5cf6',
+          shadowOpacity: 0.6,
+          shadowRadius: 12,
+        }
+      ]}>
+        <View style={[styles.customIndicator, { backgroundColor: colors.primary }]}>
           <Text style={styles.customIndicatorText}>✨ Custom</Text>
         </View>
         <View style={styles.cardHeader}>
-          <Text style={styles.cardName}>{item.name}</Text>
-          <Text style={styles.cardHz}>{item.layers.length} layers</Text>
+          <Text style={[styles.cardName, { color: colors.accent }]}>{item.name}</Text>
+          <Text style={[styles.cardHz, { color: colors.primary, backgroundColor: isDark ? '#1e1b4b' : '#ede9fe' }]}>
+            {item.layers.length} layers
+          </Text>
         </View>
-        <Text style={styles.freqList}>
+        <Text style={[styles.freqList, { color: isDark ? '#c084fc' : '#9333ea' }]}>
           {item.layers.map(l => `${l.hz}Hz`).join(' + ')}
         </Text>
         {hasLowFreq && (
-          <Text style={styles.headphoneNote}>🎧 Use headphones for best experience</Text>
+          <Text style={[styles.headphoneNote, { color: isDark ? '#c4b5fd' : '#7c3aed' }]}>🎧 Use headphones for best experience</Text>
         )}
         <View style={styles.cardActions}>
           <Pressable 
@@ -235,44 +324,44 @@ export function FavoritesScreen() {
 
   return (
     <ScrollView 
-      style={styles.container}
+      style={[styles.container, { backgroundColor: colors.background }]}
       refreshControl={
         <RefreshControl 
           refreshing={refreshing} 
           onRefresh={onRefresh}
-          tintColor="#a855f7"
-          colors={['#a855f7']}
+          tintColor={colors.primary}
+          colors={[colors.primary]}
         />
       }
     >
       <View style={styles.header}>
-        <Text style={styles.heading}>💜 Favorites</Text>
-        <Text style={styles.subheading}>{totalFavorites} saved items • Pull to refresh</Text>
+        <Text style={[styles.heading, { color: colors.text }]}>💜 Favorites</Text>
+        <Text style={[styles.subheading, { color: colors.textMuted }]}>{totalFavorites} saved items • Pull to refresh</Text>
       </View>
 
       {/* Section Tabs */}
-      <View style={styles.tabs}>
+      <View style={[styles.tabs, { backgroundColor: colors.surface }]}>
         <Pressable 
-          style={[styles.tab, activeSection === 'tones' && styles.tabActive]}
+          style={[styles.tab, activeSection === 'tones' && { backgroundColor: colors.primary }]}
           onPress={() => setActiveSection('tones')}
         >
-          <Text style={[styles.tabText, activeSection === 'tones' && styles.tabTextActive]}>
+          <Text style={[styles.tabText, { color: activeSection === 'tones' ? '#ffffff' : colors.textSecondary }]}>
             🎵 Tones ({favoritedFrequencies.length})
           </Text>
         </Pressable>
         <Pressable 
-          style={[styles.tab, activeSection === 'baths' && styles.tabActive]}
+          style={[styles.tab, activeSection === 'baths' && { backgroundColor: colors.primary }]}
           onPress={() => setActiveSection('baths')}
         >
-          <Text style={[styles.tabText, activeSection === 'baths' && styles.tabTextActive]}>
+          <Text style={[styles.tabText, { color: activeSection === 'baths' ? '#ffffff' : colors.textSecondary }]}>
             🛁 Baths ({favoritedBaths.length})
           </Text>
         </Pressable>
         <Pressable 
-          style={[styles.tab, activeSection === 'custom' && styles.tabActive]}
+          style={[styles.tab, activeSection === 'custom' && { backgroundColor: colors.primary }]}
           onPress={() => setActiveSection('custom')}
         >
-          <Text style={[styles.tabText, activeSection === 'custom' && styles.tabTextActive]}>
+          <Text style={[styles.tabText, { color: activeSection === 'custom' ? '#ffffff' : colors.textSecondary }]}>
             ✨ Custom ({allCustomBaths.length})
           </Text>
         </Pressable>
@@ -282,10 +371,10 @@ export function FavoritesScreen() {
       {activeSection === 'tones' && (
         <View style={styles.section}>
           {favoritedFrequencies.length === 0 ? (
-            <View style={styles.emptyState}>
+            <View style={[styles.emptyState, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <Text style={styles.emptyIcon}>🎵</Text>
-              <Text style={styles.emptyText}>No favorite tones yet</Text>
-              <Text style={styles.emptyHint}>Tap the heart on any tone in the Library to add it here</Text>
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No favorite tones yet</Text>
+              <Text style={[styles.emptyHint, { color: colors.textMuted }]}>Tap the heart on any tone in the Library to add it here</Text>
             </View>
           ) : (
             <FlatList
@@ -301,10 +390,10 @@ export function FavoritesScreen() {
       {activeSection === 'baths' && (
         <View style={styles.section}>
           {favoritedBaths.length === 0 ? (
-            <View style={styles.emptyState}>
+            <View style={[styles.emptyState, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <Text style={styles.emptyIcon}>🛁</Text>
-              <Text style={styles.emptyText}>No favorite baths yet</Text>
-              <Text style={styles.emptyHint}>Tap the heart on any bath in the Library to add it here</Text>
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No favorite baths yet</Text>
+              <Text style={[styles.emptyHint, { color: colors.textMuted }]}>Tap the heart on any bath in the Library to add it here</Text>
             </View>
           ) : (
             <FlatList
@@ -320,10 +409,10 @@ export function FavoritesScreen() {
       {activeSection === 'custom' && (
         <View style={styles.section}>
           {allCustomBaths.length === 0 ? (
-            <View style={styles.emptyState}>
+            <View style={[styles.emptyState, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <Text style={styles.emptyIcon}>✨</Text>
-              <Text style={styles.emptyText}>No custom baths yet</Text>
-              <Text style={styles.emptyHint}>Create custom baths in the Composer tab</Text>
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No custom baths yet</Text>
+              <Text style={[styles.emptyHint, { color: colors.textMuted }]}>Create custom baths in the Composer tab</Text>
             </View>
           ) : (
             <FlatList

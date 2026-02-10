@@ -34,7 +34,7 @@ export const SMART_STACKS: SmartStack[] = [
     emoji: '📚',
     frequencies: [528, 40, 12],
     waveforms: ['sine', 'sine', 'triangle'],
-    reasoning: '528Hz DNA repair frequency aids learning, 40Hz enhances memory encoding, 12Hz promotes information processing.',
+    reasoning: '528Hz harmony frequency supports learning, 40Hz enhances memory encoding, 12Hz promotes information processing.',
     category: 'focus'
   },
   {
@@ -53,12 +53,12 @@ export const SMART_STACKS: SmartStack[] = [
   {
     id: 'stack-instant-calm',
     name: 'Instant Calm',
-    goal: 'I feel anxious or stressed',
-    description: 'Rapid stress relief and nervous system reset',
+    goal: 'I feel stressed or overwhelmed',
+    description: 'Rapid calm and nervous system support',
     emoji: '🌸',
     frequencies: [396, 174, 639],
     waveforms: ['sine', 'sine', 'sine'],
-    reasoning: '396Hz releases fear/guilt, 174Hz is a natural anesthetic, 639Hz harmonizes relationships (including with self).',
+    reasoning: '396Hz releases fear/guilt, 174Hz promotes deep calm, 639Hz harmonizes relationships (including with self).',
     category: 'relaxation'
   },
   {
@@ -69,7 +69,7 @@ export const SMART_STACKS: SmartStack[] = [
     emoji: '🧘',
     frequencies: [528, 6, 432],
     waveforms: ['sine', 'sine', 'triangle'],
-    reasoning: '528Hz miracle tone for healing, 6Hz Theta promotes deep relaxation, 432Hz natural tuning for harmony.',
+    reasoning: '528Hz miracle tone for wellness, 6Hz Theta promotes deep relaxation, 432Hz natural tuning for harmony.',
     category: 'relaxation'
   },
   
@@ -82,7 +82,7 @@ export const SMART_STACKS: SmartStack[] = [
     emoji: '😴',
     frequencies: [174, 2, 4],
     waveforms: ['sine', 'sine', 'sine'],
-    reasoning: '174Hz natural sedative effect, 2Hz deep Delta for sleep, 4Hz Theta for the transition to sleep.',
+    reasoning: '174Hz promotes deep calm, 2Hz deep Delta for sleep, 4Hz Theta for the transition to sleep.',
     category: 'sleep'
   },
   {
@@ -93,7 +93,7 @@ export const SMART_STACKS: SmartStack[] = [
     emoji: '🌙',
     frequencies: [174, 285, 0.5],
     waveforms: ['sine', 'sine', 'sine'],
-    reasoning: '174Hz pain relief for physical relaxation, 285Hz heals tissues during sleep, 0.5Hz ultra-low Delta for deepest sleep.',
+    reasoning: '174Hz promotes relaxation, 285Hz supports tissue balance during sleep, 0.5Hz ultra-low Delta for deepest sleep.',
     category: 'sleep'
   },
   
@@ -106,7 +106,7 @@ export const SMART_STACKS: SmartStack[] = [
     emoji: '☀️',
     frequencies: [528, 741, 18],
     waveforms: ['sine', 'triangle', 'sine'],
-    reasoning: '528Hz awakens the body, 741Hz clears toxins and awakens intuition, 18Hz Beta for alertness.',
+    reasoning: '528Hz awakens the body, 741Hz clears mental fog and awakens intuition, 18Hz Beta for alertness.',
     category: 'energy'
   },
   {
@@ -121,38 +121,38 @@ export const SMART_STACKS: SmartStack[] = [
     category: 'energy'
   },
   
-  // Healing
+  // Wellness
   {
-    id: 'stack-pain-relief',
-    name: 'Pain Relief',
-    goal: 'I\'m experiencing physical pain',
-    description: 'Natural anesthetic frequencies',
+    id: 'stack-comfort-support',
+    name: 'Comfort Support',
+    goal: 'I\'m experiencing physical discomfort',
+    description: 'Natural calming frequencies',
     emoji: '💚',
     frequencies: [174, 285, 528],
     waveforms: ['sine', 'sine', 'sine'],
-    reasoning: '174Hz is a natural anesthetic, 285Hz heals tissues, 528Hz promotes DNA repair and healing.',
+    reasoning: '174Hz promotes calm, 285Hz supports tissue wellness, 528Hz promotes harmony and balance.',
     category: 'healing'
   },
   {
-    id: 'stack-immune-boost',
-    name: 'Immune Support',
-    goal: 'I want to boost my immune system',
-    description: 'Frequencies associated with cellular health',
+    id: 'stack-vitality-support',
+    name: 'Vitality Support',
+    goal: 'I want to feel more energized',
+    description: 'Frequencies associated with cellular wellness',
     emoji: '🛡️',
     frequencies: [528, 285, 727],
     waveforms: ['sine', 'sine', 'sine'],
-    reasoning: '528Hz DNA repair, 285Hz tissue healing, 727Hz Rife frequency for general wellness.',
+    reasoning: '528Hz harmony, 285Hz tissue support, 727Hz Rife frequency for general wellness.',
     category: 'healing'
   },
   {
-    id: 'stack-headache-relief',
-    name: 'Headache Relief',
-    goal: 'I have a headache',
-    description: 'Soothing frequencies for head tension',
+    id: 'stack-head-comfort',
+    name: 'Head Comfort',
+    goal: 'I have head tension',
+    description: 'Soothing frequencies for relaxation',
     emoji: '🧊',
     frequencies: [174, 10, 396],
     waveforms: ['sine', 'sine', 'sine'],
-    reasoning: '174Hz pain relief, 10Hz Alpha relaxes tension, 396Hz releases stress held in the body.',
+    reasoning: '174Hz calming effect, 10Hz Alpha relaxes tension, 396Hz releases stress held in the body.',
     category: 'healing'
   },
   
@@ -222,7 +222,7 @@ export const SMART_STACKS: SmartStack[] = [
     emoji: '💜',
     frequencies: [639, 528, 417],
     waveforms: ['sine', 'sine', 'sine'],
-    reasoning: '639Hz heart chakra healing, 528Hz self-transformation, 417Hz facilitates positive change.',
+    reasoning: '639Hz heart chakra harmony, 528Hz self-transformation, 417Hz facilitates positive change.',
     category: 'manifestation'
   }
 ];
@@ -234,10 +234,10 @@ export function getSmartStackSuggestions(userGoal: string): SmartStack[] {
   // Keywords to category mapping
   const categoryKeywords: Record<SmartStack['category'], string[]> = {
     focus: ['focus', 'concentrate', 'study', 'work', 'productive', 'attention', 'learn', 'memory'],
-    relaxation: ['relax', 'calm', 'stress', 'anxious', 'anxiety', 'peace', 'tension', 'nervous'],
-    sleep: ['sleep', 'insomnia', 'tired', 'rest', 'bed', 'night', 'dream'],
-    energy: ['energy', 'awake', 'morning', 'tired', 'fatigue', 'motivation', 'boost'],
-    healing: ['heal', 'pain', 'hurt', 'sick', 'immune', 'headache', 'body', 'physical'],
+    relaxation: ['relax', 'calm', 'stress', 'peace', 'tension', 'nervous', 'unwind', 'soothe'],
+    sleep: ['sleep', 'sleepy', 'tired', 'rest', 'bed', 'night', 'dream'],
+    energy: ['energy', 'awake', 'morning', 'tired', 'motivation', 'boost', 'vitality'],
+    healing: ['wellness', 'comfort', 'body', 'physical', 'soothe', 'relax'],
     creativity: ['creative', 'art', 'music', 'write', 'ideas', 'inspiration', 'imagine'],
     meditation: ['meditat', 'spiritual', 'chakra', 'zen', 'mindful', 'third eye', 'intuition'],
     manifestation: ['manifest', 'attract', 'abundance', 'wealth', 'love', 'confidence', 'goal']

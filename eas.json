@@ -10,6 +10,12 @@
       "android": {
         "buildType": "apk",
         "credentialsSource": "remote"
+      },
+      "env": {
+        "SUPABASE_URL": "https://qdnijmpcedgrpalnlojp.supabase.co",
+        "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFkbmlqbXBjZWRncnBhbG5sb2pwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg3MTE2NDgsImV4cCI6MjA4NDI4NzY0OH0.3MXwffoZRvDBGLUCBrKSfy0F-O5ZCtMk-tSWyvFMpNo",
+        "REVENUECAT_API_KEY": "test_xfJvKnRDVTgVmDEERjBYTnOZExW",
+        "REVENUECAT_APP_ID": "app3d2f00b322"
       }
     },
     "preview": {
@@ -17,12 +23,38 @@
       "android": {
         "buildType": "apk",
         "credentialsSource": "remote"
+      },
+      "env": {
+        "SUPABASE_URL": "https://qdnijmpcedgrpalnlojp.supabase.co",
+        "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFkbmlqbXBjZWRncnBhbG5sb2pwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg3MTE2NDgsImV4cCI6MjA4NDI4NzY0OH0.3MXwffoZRvDBGLUCBrKSfy0F-O5ZCtMk-tSWyvFMpNo",
+        "REVENUECAT_API_KEY": "test_xfJvKnRDVTgVmDEERjBYTnOZExW",
+        "REVENUECAT_APP_ID": "app3d2f00b322"
+      }
+    },
+    "production-apk": {
+      "android": {
+        "buildType": "apk",
+        "credentialsSource": "remote"
+      },
+      "env": {
+        "SUPABASE_URL": "https://qdnijmpcedgrpalnlojp.supabase.co",
+        "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFkbmlqbXBjZWRncnBhbG5sb2pwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg3MTE2NDgsImV4cCI6MjA4NDI4NzY0OH0.3MXwffoZRvDBGLUCBrKSfy0F-O5ZCtMk-tSWyvFMpNo",
+        "REVENUECAT_API_KEY": "test_xfJvKnRDVTgVmDEERjBYTnOZExW",
+        "REVENUECAT_APP_ID": "app3d2f00b322"
       }
     },
     "production": {
       "android": {
         "buildType": "app-bundle",
-        "credentialsSource": "remote"
+        "credentialsSource": "remote",
+        "image": "latest"
+      },
+      "env": {
+        "SUPABASE_URL": "https://qdnijmpcedgrpalnlojp.supabase.co",
+        "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFkbmlqbXBjZWRncnBhbG5sb2pwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg3MTE2NDgsImV4cCI6MjA4NDI4NzY0OH0.3MXwffoZRvDBGLUCBrKSfy0F-O5ZCtMk-tSWyvFMpNo",
+        "STRIPE_PUBLISHABLE_KEY": "pk_test_YOUR_TEST_KEY_HERE",
+        "REVENUECAT_API_KEY": "test_xfJvKnRDVTgVmDEERjBYTnOZExW",
+        "REVENUECAT_APP_ID": "app3d2f00b322"
       }
     }
   },

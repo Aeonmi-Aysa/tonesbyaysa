@@ -95,7 +95,7 @@ export function RemindersScreen() {
 
     await addReminder({
       title: title.trim(),
-      body: body.trim() || 'Time for your healing session!',
+      body: body.trim() || 'Time for your wellness session!',
       hour,
       minute,
       days: selectedDays,
@@ -177,7 +177,7 @@ export function RemindersScreen() {
         <ScrollView showsVerticalScrollIndicator={false}>
           <View style={styles.header}>
             <Text style={styles.title}>⏰ Session Reminders</Text>
-            <Text style={styles.subtitle}>Never miss your healing practice</Text>
+            <Text style={styles.subtitle}>Never miss your wellness practice</Text>
           </View>
 
           {/* Permission Status */}
@@ -218,7 +218,7 @@ export function RemindersScreen() {
                 <Text style={styles.emptyEmoji}>🔔</Text>
                 <Text style={styles.emptyText}>No reminders yet</Text>
                 <Text style={styles.emptySub}>
-                  Create a reminder to build your healing habit
+                  Create a reminder to build your wellness habit
                 </Text>
               </View>
             ) : (

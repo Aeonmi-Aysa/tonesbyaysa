@@ -1,0 +1,137 @@
+🔴 CRITICAL FIX NEEDED - DATABASE SYNC ISSUE
+
+═══════════════════════════════════════════════════════════════
+
+PROBLEM:
+When user purchases subscription:
+✅ RevenueCat updates
+✅ Local state updates
+❌ Supabase database NEVER updates
+
+Result:
+- User logs out → logs back in
+- Profile reloads from Supabase (no subscription data)
+- Subscription tier reverts to "FREE"
+- User loses their purchase access!
+
+═══════════════════════════════════════════════════════════════
+
+SOLUTION: Add Supabase update after successful purchase
+
+File: src/screens/main/PricingScreen.tsx
+Function: handlePurchase()
+
+After this line (around line 180):
+────────────────────────────────────────
+if (hasEntitlement) {
+  // Update local profile
+  const newTier = tier.id as 'free' | 'weekly' | 'lifetime';
+  if (profile) {
+    setProfile({ ...profile, subscription_tier: newTier });
+  }
+  setCurrentTier(newTier);
+
+ADD THIS NEW CODE:
+────────────────────────────────────────
+  // CRITICAL: Also update Supabase database
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user?.id && profile) {
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({
+          subscription_tier: newTier,
+          subscription_status: 'active'
+        })
+        .eq('id', session.user.id);
+      
+      if (updateError) {
+        console.error('[Supabase] Failed to update profile:', updateError);
+        // Still show success - payment went through even if DB update failed
+      } else {
+        console.log('[Supabase] ✅ Profile subscription updated');
+      }
+    }
+  } catch (error) {
+    console.error('[Supabase] Update error:', error);
+  }
+
+COMPLETE CONTEXT (what the code should look like):
+────────────────────────────────────────
+if (hasEntitlement) {
+  const newTier = tier.id as 'free' | 'weekly' | 'lifetime';
+  
+  if (profile) {
+    // Update local state
+    setProfile({ ...profile, subscription_tier: newTier });
+    
+    // Update Supabase database
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user?.id) {
+        const { error } = await supabase
+          .from('profiles')
+          .update({
+            subscription_tier: newTier,
+            subscription_status: 'active'
+          })
+          .eq('id', session.user.id);
+        
+        if (error) console.error('DB update failed:', error);
+      }
+    } catch (error) {
+      console.error('Supabase error:', error);
+    }
+  }
+  
+  setCurrentTier(newTier);
+  
+  Alert.alert('Success! 🎉', `Welcome to ${tier.name}! Enjoy all the frequencies.`, [
+    { text: 'OK', onPress: onDismiss },
+  ]);
+}
+
+═══════════════════════════════════════════════════════════════
+
+VERIFICATION AFTER FIX:
+
+1. Make sure PricingScreen.tsx imports supabase:
+   import { supabase } from '@/lib/supabaseClient';
+
+2. Test the flow:
+   - Login as user
+   - Go to pricing
+   - Purchase weekly
+   - Check that:
+     ✅ Alert shows "Success"
+     ✅ Local state shows "WEEKLY"
+     ✅ Console log shows "Profile subscription updated"
+     ✅ Supabase dashboard shows subscription_tier = "weekly"
+
+3. Test persistence:
+   - Close app completely
+   - Reopen app
+   - Check Dashboard → subscription status still shows "WEEKLY"
+   - Log out → log back in
+   - Check Dashboard → subscription status still shows "WEEKLY"
+
+═══════════════════════════════════════════════════════════════
+
+ALSO DO THIS:
+
+Make sure Supabase profiles table has these columns:
+- subscription_tier (text) - default: 'free'
+- subscription_status (text) - default: 'inactive'
+
+If missing, add to Supabase via SQL:
+ALTER TABLE profiles ADD COLUMN subscription_tier TEXT DEFAULT 'free';
+ALTER TABLE profiles ADD COLUMN subscription_status TEXT DEFAULT 'inactive';
+
+═══════════════════════════════════════════════════════════════
+
+PRIORITY: DO THIS BEFORE REBUILD
+
+This is the most critical bug. Without it, users lose access
+to paid features when they restart the app.
+
+═══════════════════════════════════════════════════════════════

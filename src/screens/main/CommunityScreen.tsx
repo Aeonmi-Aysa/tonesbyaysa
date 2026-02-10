@@ -15,7 +15,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { GradientView } from '@/components/GradientView';
 import { useCommunityStore, CommunityPreset, CATEGORY_INFO } from '@/store/useCommunityStore';
-import { playFrequencyBath, stopAllFrequencies } from '@/lib/audioEngine';
+import { playFrequencyBath, stopAllFrequencies } from '@/lib/audioEngineExpo';
 
 const { width } = Dimensions.get('window');
 
@@ -340,7 +340,7 @@ export function CommunityScreen() {
   const renderSharedTab = () => (
     <ScrollView style={styles.tabContent}>
       <TouchableOpacity style={styles.shareButton} onPress={handleShareCurrentStack}>
-        <LinearGradient
+        <GradientView
           colors={['#a855f7', '#6366f1']}
           style={styles.shareButtonGradient}
           start={{ x: 0, y: 0 }}
@@ -348,7 +348,7 @@ export function CommunityScreen() {
         >
           <Feather name="upload" size={20} color="#fff" />
           <Text style={styles.shareButtonText}>Share Current Stack</Text>
-        </LinearGradient>
+        </GradientView>
       </TouchableOpacity>
 
       <Text style={styles.sectionTitle}>📤 My Shared Presets</Text>
@@ -396,10 +396,10 @@ export function CommunityScreen() {
 
   return (
     <View style={styles.container}>
-      <LinearGradient colors={['#1e1b4b', '#111827']} style={styles.header}>
+      <GradientView colors={['#1e1b4b', '#111827']} style={styles.header}>
         <Text style={styles.title}>Community</Text>
         <Text style={styles.subtitle}>Discover & share frequency presets</Text>
-      </LinearGradient>
+      </GradientView>
 
       {/* Tabs */}
       <View style={styles.tabs}>
@@ -498,14 +498,14 @@ export function CommunityScreen() {
               </Text>
 
               <TouchableOpacity style={styles.submitBtn} onPress={handleSubmitShare}>
-                <LinearGradient
+                <GradientView
                   colors={['#a855f7', '#6366f1']}
                   style={styles.submitBtnGradient}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
                 >
                   <Text style={styles.submitBtnText}>Share Preset</Text>
-                </LinearGradient>
+                </GradientView>
               </TouchableOpacity>
             </ScrollView>
           </View>
@@ -582,7 +582,7 @@ export function CommunityScreen() {
                       setShowDetailModal(false);
                     }}
                   >
-                    <LinearGradient
+                    <GradientView
                       colors={['#a855f7', '#6366f1']}
                       style={styles.loadPresetBtnGradient}
                       start={{ x: 0, y: 0 }}
@@ -590,7 +590,7 @@ export function CommunityScreen() {
                     >
                       <Feather name="play" size={20} color="#fff" />
                       <Text style={styles.loadPresetBtnText}>Load & Play</Text>
-                    </LinearGradient>
+                    </GradientView>
                   </TouchableOpacity>
                 </ScrollView>
               </>

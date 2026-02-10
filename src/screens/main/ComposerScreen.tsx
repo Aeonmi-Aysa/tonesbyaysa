@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Alert, FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View, Modal } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useNavigation, type NavigationProp } from '@react-navigation/native';
 import { useSessionStore, type SessionState } from '@/store/useSessionStore';
-import { frequencyPlayer, stopAllFrequencies, playFrequencyBath, type WaveformType, WAVEFORM_OPTIONS } from '@/lib/audioEngine';
+import { useTheme } from '@/store/useThemeStore';
+import { frequencyPlayer, stopAllFrequencies, playFrequencyBath, getIsPlaying, type WaveformType, WAVEFORM_OPTIONS } from '@/lib/audioEngine';
 import { FREQUENCIES, type Frequency } from '@/lib/frequencies';
 import { SMART_STACKS, getSmartStackSuggestions, convertStackToLayers, type SmartStack } from '@/lib/smartStacks';
 
@@ -31,8 +33,10 @@ interface CustomBath {
 const MAX_LAYERS = 6;
 
 export function ComposerScreen() {
+  const navigation = useNavigation<NavigationProp<any>>();
   const profile = useSessionStore((state: SessionState) => state.profile);
   const subscriptionTier = profile?.subscription_tier || 'free';
+  const { colors, isDark } = useTheme();
   
   // State for layers (multiple frequencies in custom bath)
   const [layers, setLayers] = useState<BathLayer[]>([]);
@@ -56,6 +60,23 @@ export function ComposerScreen() {
   useEffect(() => {
     loadSavedBaths();
   }, [profile?.id]);
+
+  // Sync with global audio state
+  useEffect(() => {
+    const checkAudioState = () => {
+      const globalIsPlaying = getIsPlaying();
+      if (isPlaying !== globalIsPlaying) {
+        console.log('🔄 Syncing composer audio state:', globalIsPlaying);
+        setIsPlaying(globalIsPlaying);
+      }
+    };
+    
+    // Check immediately and then every 500ms
+    checkAudioState();
+    const interval = setInterval(checkAudioState, 500);
+    
+    return () => clearInterval(interval);
+  }, [isPlaying]);
   
   const loadSavedBaths = async () => {
     try {
@@ -138,6 +159,24 @@ export function ComposerScreen() {
 
   // Add a frequency layer
   const addLayer = (frequency: Frequency) => {
+    // Check if free user trying to access premium frequency
+    if (subscriptionTier === 'free' && frequency.isPremium) {
+      Alert.alert(
+        '🔒 Premium Feature',
+        'This frequency is only available with a paid subscription.\n\nUpgrade now to unlock all 500+ healing frequencies!',
+        [
+          { text: 'Cancel', onPress: () => {} },
+          {
+            text: 'Upgrade',
+            onPress: () => {
+              navigation.navigate('Paywall' as never);
+            }
+          }
+        ]
+      );
+      return;
+    }
+
     if (layers.length >= MAX_LAYERS) {
       Alert.alert('Layer Limit', 'Maximum 6 layers allowed per bath.');
       return;
@@ -191,25 +230,30 @@ export function ComposerScreen() {
       return;
     }
     
+    console.log('🎼 COMPOSER: Playing', layers.length, 'layers in', playMode, 'mode');
     setIsPlaying(true);
     
     try {
       if (playMode === 'blend') {
-        // Play all frequencies simultaneously
+        // Play all frequencies simultaneously with progressive layering
         const hzList = layers.map(l => l.hz);
         const maxDuration = Math.max(...layers.map(l => l.duration)) * 1000;
+        console.log('🎼 Playing blended bath:', hzList);
         await playFrequencyBath(hzList, maxDuration);
       } else {
         // Play frequencies in sequence
+        console.log('🎼 Playing sequential layers');
         for (const layer of layers) {
+          console.log('🎼 Playing layer:', layer.name, layer.hz + 'Hz');
           await frequencyPlayer.playFrequency(layer.hz, layer.duration * 1000, layer.waveform);
           // Wait for duration before next layer
           await new Promise(resolve => setTimeout(resolve, layer.duration * 1000));
         }
       }
+      console.log('✅ Composer bath completed');
       setIsPlaying(false);
     } catch (error) {
-      console.error('Playback error:', error);
+      console.error('❌ Composer playback error:', error);
       setIsPlaying(false);
       Alert.alert('Playback Error', 'Failed to play the bath.');
     }
@@ -217,8 +261,15 @@ export function ComposerScreen() {
   
   // Stop playback
   const stopPlayback = async () => {
-    setIsPlaying(false);
-    await stopAllFrequencies();
+    console.log('🛑 Composer stopping playback');
+    try {
+      await stopAllFrequencies();
+      setIsPlaying(false);
+      console.log('✅ Composer playback stopped');
+    } catch (error) {
+      console.error('❌ Composer stop failed:', error);
+      setIsPlaying(false);
+    }
   };
   
   // Save current bath design
@@ -315,50 +366,50 @@ export function ComposerScreen() {
   
   // Render layer item
   const renderLayerItem = ({ item }: { item: BathLayer }) => (
-    <View style={styles.layerCard}>
+    <View style={[styles.layerCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
       <View style={styles.layerHeader}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.layerName}>{item.name}</Text>
-          <Text style={styles.layerMeta}>{item.hz}Hz • {item.category}</Text>
+          <Text style={[styles.layerName, { color: colors.accent }]}>{item.name}</Text>
+          <Text style={[styles.layerMeta, { color: colors.textSecondary }]}>{item.hz}Hz • {item.category}</Text>
         </View>
-        <Pressable style={styles.removeBtn} onPress={() => removeLayer(item.uid)}>
+        <Pressable style={[styles.removeBtn, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : 'rgba(239, 68, 68, 0.1)' }]} onPress={() => removeLayer(item.uid)}>
           <Text style={styles.removeBtnText}>✕</Text>
         </Pressable>
       </View>
       
       <View style={styles.layerControls}>
         <View style={styles.controlRow}>
-          <Text style={styles.controlLabel}>Duration: {Math.round(item.duration / 60)} min</Text>
+          <Text style={[styles.controlLabel, { color: colors.textSecondary }]}>Duration: {Math.round(item.duration / 60)} min</Text>
           <View style={styles.durationBtns}>
             <Pressable 
-              style={styles.adjustBtn}
+              style={[styles.adjustBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
               onPress={() => updateLayerDuration(item.uid, item.duration - 30)}
             >
-              <Text style={styles.adjustBtnText}>−</Text>
+              <Text style={[styles.adjustBtnText, { color: colors.text }]}>−</Text>
             </Pressable>
             <Pressable 
-              style={styles.adjustBtn}
+              style={[styles.adjustBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
               onPress={() => updateLayerDuration(item.uid, item.duration + 30)}
             >
-              <Text style={styles.adjustBtnText}>+</Text>
+              <Text style={[styles.adjustBtnText, { color: colors.text }]}>+</Text>
             </Pressable>
           </View>
         </View>
         
         <View style={styles.controlRow}>
-          <Text style={styles.controlLabel}>Volume: {item.volume}%</Text>
+          <Text style={[styles.controlLabel, { color: colors.textSecondary }]}>Volume: {item.volume}%</Text>
           <View style={styles.durationBtns}>
             <Pressable 
-              style={styles.adjustBtn}
+              style={[styles.adjustBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
               onPress={() => updateLayerVolume(item.uid, item.volume - 10)}
             >
-              <Text style={styles.adjustBtnText}>−</Text>
+              <Text style={[styles.adjustBtnText, { color: colors.text }]}>−</Text>
             </Pressable>
             <Pressable 
-              style={styles.adjustBtn}
+              style={[styles.adjustBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
               onPress={() => updateLayerVolume(item.uid, item.volume + 10)}
             >
-              <Text style={styles.adjustBtnText}>+</Text>
+              <Text style={[styles.adjustBtnText, { color: colors.text }]}>+</Text>
             </Pressable>
           </View>
         </View>
@@ -368,27 +419,27 @@ export function ComposerScreen() {
   
   // Render frequency picker item
   const renderFrequencyItem = ({ item }: { item: Frequency }) => (
-    <Pressable style={styles.freqPickerItem} onPress={() => addLayer(item)}>
+    <Pressable style={[styles.freqPickerItem, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => addLayer(item)}>
       <View style={{ flex: 1 }}>
-        <Text style={styles.freqPickerName}>{item.name}</Text>
-        <Text style={styles.freqPickerHz}>{item.hz}Hz • {item.category}</Text>
+        <Text style={[styles.freqPickerName, { color: colors.accent }]}>{item.name}</Text>
+        <Text style={[styles.freqPickerHz, { color: colors.textSecondary }]}>{item.hz}Hz • {item.category}</Text>
       </View>
-      <Text style={styles.freqPickerAdd}>+ Add</Text>
+      <Text style={[styles.freqPickerAdd, { color: colors.primary }]}>+ Add</Text>
     </Pressable>
   );
   
   // Render saved bath item
   const renderSavedBathItem = ({ item }: { item: CustomBath }) => (
-    <View style={styles.savedBathCard}>
-      <View style={styles.customIndicator}>
+    <View style={[styles.savedBathCard, { backgroundColor: colors.background, borderColor: colors.primary }]}>
+      <View style={[styles.customIndicator, { backgroundColor: colors.primary }]}>
         <Text style={styles.customIndicatorText}>✨ Custom</Text>
       </View>
-      <Text style={styles.savedBathName}>{item.name}</Text>
-      <Text style={styles.savedBathMeta}>
+      <Text style={[styles.savedBathName, { color: colors.accent }]}>{item.name}</Text>
+      <Text style={[styles.savedBathMeta, { color: colors.textSecondary }]}>
         {item.layers.length} layers • {item.mode === 'blend' ? 'Blend' : 'Sequence'}
       </Text>
       <View style={styles.savedBathActions}>
-        <Pressable style={styles.loadBtn} onPress={() => loadBath(item)}>
+        <Pressable style={[styles.loadBtn, { backgroundColor: colors.primary }]} onPress={() => loadBath(item)}>
           <Text style={styles.loadBtnText}>Load</Text>
         </Pressable>
         <Pressable style={styles.manifestBtn} onPress={() => {
@@ -408,77 +459,77 @@ export function ComposerScreen() {
   );
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
-        <Text style={styles.heading}>Bath Composer</Text>
-        <Text style={styles.subheading}>Create custom multi-frequency healing baths</Text>
+        <Text style={[styles.heading, { color: colors.text }]}>Bath Composer</Text>
+        <Text style={[styles.subheading, { color: colors.textMuted }]}>Create custom multi-frequency wellness baths</Text>
       </View>
 
       {/* Smart Stacking Button */}
       <Pressable 
-        style={styles.smartStackingBtn}
+        style={[styles.smartStackingBtn, { backgroundColor: isDark ? '#1e1b4b' : '#ede9fe', borderColor: colors.primary }]}
         onPress={() => setShowSmartStacking(true)}
       >
         <Text style={styles.smartStackingBtnEmoji}>🧠</Text>
         <View style={styles.smartStackingBtnContent}>
-          <Text style={styles.smartStackingBtnTitle}>Smart Stacking</Text>
-          <Text style={styles.smartStackingBtnSub}>AI-curated frequency combinations for your goals</Text>
+          <Text style={[styles.smartStackingBtnTitle, { color: colors.text }]}>Smart Stacking</Text>
+          <Text style={[styles.smartStackingBtnSub, { color: colors.textSecondary }]}>AI-curated frequency combinations for your goals</Text>
         </View>
-        <Text style={styles.smartStackingBtnArrow}>→</Text>
+        <Text style={[styles.smartStackingBtnArrow, { color: colors.primary }]}>→</Text>
       </Pressable>
 
       {/* Bath Name Input */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Bath Name</Text>
+      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <Text style={[styles.cardTitle, { color: colors.text }]}>Bath Name</Text>
         <TextInput
-          style={styles.textInput}
-          placeholder="My Custom Healing Bath"
-          placeholderTextColor="#64748b"
+          style={[styles.textInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
+          placeholder="My Custom Wellness Bath"
+          placeholderTextColor={colors.textMuted}
           value={bathName}
           onChangeText={setBathName}
         />
       </View>
 
       {/* Play Mode Toggle */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Playback Mode</Text>
-        <View style={styles.modeToggle}>
+      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <Text style={[styles.cardTitle, { color: colors.text }]}>Playback Mode</Text>
+        <View style={[styles.modeToggle, { backgroundColor: colors.background }]}>
           <Pressable
-            style={[styles.modeBtn, playMode === 'blend' && styles.modeBtnActive]}
+            style={[styles.modeBtn, playMode === 'blend' && { backgroundColor: colors.primary }]}
             onPress={() => setPlayMode('blend')}
           >
-            <Text style={[styles.modeBtnText, playMode === 'blend' && styles.modeBtnTextActive]}>
+            <Text style={[styles.modeBtnText, { color: playMode === 'blend' ? '#ffffff' : colors.textSecondary }]}>
               🔀 Blend
             </Text>
           </Pressable>
           <Pressable
-            style={[styles.modeBtn, playMode === 'sequence' && styles.modeBtnActive]}
+            style={[styles.modeBtn, playMode === 'sequence' && { backgroundColor: colors.primary }]}
             onPress={() => setPlayMode('sequence')}
           >
-            <Text style={[styles.modeBtnText, playMode === 'sequence' && styles.modeBtnTextActive]}>
+            <Text style={[styles.modeBtnText, { color: playMode === 'sequence' ? '#ffffff' : colors.textSecondary }]}>
               ➡️ Sequence
             </Text>
           </Pressable>
         </View>
-        <Text style={styles.modeHint}>
+        <Text style={[styles.modeHint, { color: colors.textMuted }]}>
           {playMode === 'blend' ? 'All frequencies play simultaneously (layered)' : 'Frequencies play one after another'}
         </Text>
       </View>
 
       {/* Frequency Layers */}
-      <View style={styles.card}>
+      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <View style={styles.cardHeader}>
-          <Text style={styles.cardTitle}>Layers ({layers.length}/{MAX_LAYERS})</Text>
-          <Pressable style={styles.addLayerBtn} onPress={() => setShowFrequencyPicker(true)}>
+          <Text style={[styles.cardTitle, { color: colors.text }]}>Layers ({layers.length}/{MAX_LAYERS})</Text>
+          <Pressable style={[styles.addLayerBtn, { backgroundColor: colors.primary }]} onPress={() => setShowFrequencyPicker(true)}>
             <Text style={styles.addLayerBtnText}>+ Add</Text>
           </Pressable>
         </View>
         
         {layers.length === 0 ? (
-          <View style={styles.emptyState}>
+          <View style={[styles.emptyState, { backgroundColor: colors.background, borderColor: colors.border }]}>
             <Text style={styles.emptyIcon}>🎵</Text>
-            <Text style={styles.emptyText}>No layers yet</Text>
-            <Text style={styles.emptyHint}>Add frequencies from library to compose</Text>
+            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No layers yet</Text>
+            <Text style={[styles.emptyHint, { color: colors.textMuted }]}>Add frequencies from library to compose</Text>
           </View>
         ) : (
           <FlatList
@@ -490,8 +541,8 @@ export function ComposerScreen() {
         )}
         
         {hasLowFrequencies && layers.length > 0 && (
-          <View style={styles.headphoneNote}>
-            <Text style={styles.headphoneNoteText}>
+          <View style={[styles.headphoneNote, { backgroundColor: isDark ? 'rgba(139, 92, 246, 0.15)' : 'rgba(139, 92, 246, 0.1)' }]}>
+            <Text style={[styles.headphoneNoteText, { color: isDark ? '#c4b5fd' : '#7c3aed' }]}>
               🎧 Low frequencies detected. Use headphones for optimal experience.
             </Text>
           </View>
@@ -500,9 +551,9 @@ export function ComposerScreen() {
 
       {/* Summary & Controls */}
       {layers.length > 0 && (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Summary</Text>
-          <Text style={styles.summaryText}>
+        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[styles.cardTitle, { color: colors.text }]}>Summary</Text>
+          <Text style={[styles.summaryText, { color: colors.textSecondary }]}>
             {layers.length} layer{layers.length !== 1 ? 's' : ''} • {playMode === 'blend' ? 'Blend' : 'Sequence'} • ~{Math.round(totalRuntime / 60)} min
           </Text>
           
@@ -516,30 +567,26 @@ export function ComposerScreen() {
               </Text>
             </Pressable>
             
-            <Pressable style={styles.saveBtn} onPress={saveBath}>
+            <Pressable style={[styles.saveBtn, { backgroundColor: colors.primary }]} onPress={saveBath}>
               <Text style={styles.saveBtnText}>💾 Save</Text>
             </Pressable>
             
-            <Pressable style={styles.clearBtn} onPress={clearLayers}>
+            <Pressable style={[styles.clearBtn, { backgroundColor: isDark ? '#374151' : '#e5e7eb' }]} onPress={clearLayers}>
               <Text style={styles.clearBtnText}>🗑️</Text>
             </Pressable>
           </View>
-          
-          <Pressable style={styles.manifestBtn} onPress={saveAndSendToManifestation}>
-            <Text style={styles.manifestBtnText}>✨ Save & Use in Manifestation</Text>
-          </Pressable>
         </View>
       )}
 
       {/* Saved Custom Baths */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Your Custom Baths ({savedBaths.length})</Text>
+      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <Text style={[styles.cardTitle, { color: colors.text }]}>Your Custom Baths ({savedBaths.length})</Text>
         
         {savedBaths.length === 0 ? (
-          <View style={styles.emptyState}>
+          <View style={[styles.emptyState, { backgroundColor: colors.background, borderColor: colors.border }]}>
             <Text style={styles.emptyIcon}>🛁</Text>
-            <Text style={styles.emptyText}>No saved baths yet</Text>
-            <Text style={styles.emptyHint}>Create and save your first custom bath</Text>
+            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No saved baths yet</Text>
+            <Text style={[styles.emptyHint, { color: colors.textMuted }]}>Create and save your first custom bath</Text>
           </View>
         ) : (
           <FlatList
@@ -557,31 +604,34 @@ export function ComposerScreen() {
         animationType="slide"
         presentationStyle="pageSheet"
       >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Select Frequency</Text>
+        <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Select Frequency</Text>
             <Pressable onPress={() => setShowFrequencyPicker(false)}>
-              <Text style={styles.modalClose}>✕</Text>
+              <Text style={[styles.modalClose, { color: colors.textMuted }]}>✕</Text>
             </Pressable>
           </View>
           
           <TextInput
-            style={styles.searchInput}
+            style={[styles.searchInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
             placeholder="Search frequencies..."
-            placeholderTextColor="#64748b"
+            placeholderTextColor={colors.textMuted}
             value={searchQuery}
             onChangeText={setSearchQuery}
           />
           
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll}>
-            {categories.slice(0, 8).map(cat => (
+            {categories.map(cat => (
               <Pressable
                 key={cat}
-                style={[styles.categoryBtn, selectedCategory === cat && styles.categoryBtnActive]}
+                style={[
+                  styles.categoryBtn, 
+                  { backgroundColor: selectedCategory === cat ? colors.primary : colors.surface, borderColor: colors.border }
+                ]}
                 onPress={() => setSelectedCategory(cat)}
               >
-                <Text style={[styles.categoryBtnText, selectedCategory === cat && styles.categoryBtnTextActive]}>
-                  {cat === 'all' ? 'All' : cat.charAt(0).toUpperCase() + cat.slice(1)}
+                <Text style={[styles.categoryBtnText, { color: selectedCategory === cat ? '#ffffff' : colors.textSecondary }]}>
+                  {cat === 'all' ? 'All' : cat === 'healing' ? 'Wellness' : cat.charAt(0).toUpperCase() + cat.slice(1)}
                 </Text>
               </Pressable>
             ))}
@@ -602,26 +652,26 @@ export function ComposerScreen() {
         animationType="slide"
         presentationStyle="pageSheet"
       >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>🧠 Smart Stacking</Text>
+        <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>🧠 Smart Stacking</Text>
             <Pressable onPress={() => {
               setShowSmartStacking(false);
               setSmartGoal('');
               setSuggestedStacks([]);
             }}>
-              <Text style={styles.modalClose}>✕</Text>
+              <Text style={[styles.modalClose, { color: colors.textMuted }]}>✕</Text>
             </Pressable>
           </View>
           
-          <Text style={styles.smartSubtitle}>
+          <Text style={[styles.smartSubtitle, { color: colors.textSecondary }]}>
             Tell us your goal and we'll suggest the perfect frequency combination
           </Text>
           
           <TextInput
-            style={styles.searchInput}
+            style={[styles.searchInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
             placeholder="e.g., I want to focus better, I can't sleep, I feel anxious..."
-            placeholderTextColor="#64748b"
+            placeholderTextColor={colors.textMuted}
             value={smartGoal}
             onChangeText={handleSmartSearch}
             multiline
@@ -632,11 +682,14 @@ export function ComposerScreen() {
             {(['all', 'focus', 'relaxation', 'sleep', 'energy', 'healing', 'creativity', 'meditation', 'manifestation'] as const).map(cat => (
               <Pressable
                 key={cat}
-                style={[styles.categoryBtn, selectedStackCategory === cat && styles.categoryBtnActive]}
+                style={[
+                  styles.categoryBtn, 
+                  { backgroundColor: selectedStackCategory === cat ? colors.primary : colors.surface, borderColor: colors.border }
+                ]}
                 onPress={() => setSelectedStackCategory(cat)}
               >
-                <Text style={[styles.categoryBtnText, selectedStackCategory === cat && styles.categoryBtnTextActive]}>
-                  {cat === 'all' ? '✨ All' : cat.charAt(0).toUpperCase() + cat.slice(1)}
+                <Text style={[styles.categoryBtnText, { color: selectedStackCategory === cat ? '#ffffff' : colors.textSecondary }]}>
+                  {cat === 'all' ? '✨ All' : cat === 'healing' ? 'Wellness' : cat.charAt(0).toUpperCase() + cat.slice(1)}
                 </Text>
               </Pressable>
             ))}
@@ -647,25 +700,25 @@ export function ComposerScreen() {
             data={suggestedStacks.length > 0 ? suggestedStacks : getFilteredStacks()}
             renderItem={({ item }) => (
               <Pressable 
-                style={styles.smartStackCard}
+                style={[styles.smartStackCard, { backgroundColor: colors.surface, borderColor: colors.primary }]}
                 onPress={() => loadSmartStack(item)}
               >
                 <View style={styles.smartStackHeader}>
                   <Text style={styles.smartStackEmoji}>{item.emoji}</Text>
                   <View style={styles.smartStackInfo}>
-                    <Text style={styles.smartStackName}>{item.name}</Text>
-                    <Text style={styles.smartStackGoal}>{item.goal}</Text>
+                    <Text style={[styles.smartStackName, { color: colors.accent }]}>{item.name}</Text>
+                    <Text style={[styles.smartStackGoal, { color: colors.textSecondary }]}>{item.goal}</Text>
                   </View>
                 </View>
-                <Text style={styles.smartStackDesc}>{item.description}</Text>
-                <Text style={styles.smartStackFreqs}>
+                <Text style={[styles.smartStackDesc, { color: colors.textSecondary }]}>{item.description}</Text>
+                <Text style={[styles.smartStackFreqs, { color: colors.primary }]}>
                   {item.frequencies.map(f => `${f}Hz`).join(' + ')}
                 </Text>
-                <View style={styles.smartStackReasoning}>
-                  <Text style={styles.smartStackReasoningText}>💡 {item.reasoning}</Text>
+                <View style={[styles.smartStackReasoning, { backgroundColor: isDark ? 'rgba(139, 92, 246, 0.15)' : 'rgba(139, 92, 246, 0.1)' }]}>
+                  <Text style={[styles.smartStackReasoningText, { color: isDark ? '#c4b5fd' : '#7c3aed' }]}>💡 {item.reasoning}</Text>
                 </View>
                 <View style={styles.smartStackAction}>
-                  <Text style={styles.smartStackActionText}>Tap to Load →</Text>
+                  <Text style={[styles.smartStackActionText, { color: colors.primary }]}>Tap to Load →</Text>
                 </View>
               </Pressable>
             )}
@@ -673,8 +726,8 @@ export function ComposerScreen() {
             style={styles.freqList}
             ListHeaderComponent={
               suggestedStacks.length > 0 ? (
-                <View style={styles.suggestionsHeader}>
-                  <Text style={styles.suggestionsHeaderText}>
+                <View style={[styles.suggestionsHeader, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.15)' : 'rgba(16, 185, 129, 0.1)' }]}>
+                  <Text style={[styles.suggestionsHeaderText, { color: isDark ? '#34d399' : '#059669' }]}>
                     🎯 Suggested for "{smartGoal}"
                   </Text>
                 </View>

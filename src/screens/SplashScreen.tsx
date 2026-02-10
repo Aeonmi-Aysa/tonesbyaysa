@@ -4,7 +4,10 @@ export function SplashScreen() {
   return (
     <View style={styles.container}>
       <ActivityIndicator size="large" color="white" />
-      <Text style={styles.text}>Preparing your HealTone experience...</Text>
+      <Text style={styles.text}>Preparing your Tones by Aysa experience...</Text>
+      <Text style={styles.disclaimer}>
+        Wellness & Relaxation Tool{'\n'}Not intended for medical use
+      </Text>
     </View>
   );
 }
@@ -22,5 +25,13 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
     textAlign: 'center',
     fontSize: 16
+  },
+  disclaimer: {
+    position: 'absolute',
+    bottom: 40,
+    color: '#64748b',
+    textAlign: 'center',
+    fontSize: 12,
+    lineHeight: 18
   }
 });

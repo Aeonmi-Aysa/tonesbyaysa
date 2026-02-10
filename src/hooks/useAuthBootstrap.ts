@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { useSessionStore, type Profile } from '@/store/useSessionStore';
+import { platformErrorHandler } from '@/lib/platformErrorHandler';
 
 async function fetchProfile(userId: string): Promise<Profile | null> {
   const { data, error } = await supabase
@@ -22,42 +23,65 @@ export function useAuthBootstrap() {
   const setSession = useSessionStore((state) => state.setSession);
   const setProfile = useSessionStore((state) => state.setProfile);
 
-  const hydrateSession = useCallback(async () => {
-    const { data, error } = await supabase.auth.getSession();
-    if (error) {
-      console.warn('Session lookup failed', error.message);
-    }
-
-    const session = data?.session ?? null;
-    setSession(session);
-
-    if (session) {
-      const profile = await fetchProfile(session.user.id);
-      setProfile(profile);
-    } else {
-      setProfile(null);
-    }
-
-    setIsBootstrapping(false);
-  }, [setProfile, setSession]);
-
   useEffect(() => {
-    hydrateSession();
+    let isBootstrapComplete = false;
+    let unsubscribe: (() => void) | null = null;
 
+    const bootstrap = async () => {
+      try {
+        // Step 1: Get initial session
+        const { data, error } = await supabase.auth.getSession();
+        if (error) {
+          platformErrorHandler.handleAuthError(error);
+          console.warn('Session lookup failed', error.message);
+        }
+
+        const session = data?.session ?? null;
+        setSession(session);
+
+        // Step 2: Fetch profile if session exists
+        if (session) {
+          const profile = await fetchProfile(session.user.id);
+          setProfile(profile);
+        } else {
+          setProfile(null);
+        }
+
+        isBootstrapComplete = true;
+        setIsBootstrapping(false);
+      } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        platformErrorHandler.handleInitError(err, 'useAuthBootstrap');
+        isBootstrapComplete = true;
+        setIsBootstrapping(false);
+      }
+    };
+
+    // Step 3: Set up auth state change listener AFTER initial load
     const { data: subscription } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setSession(session);
-      if (session) {
-        const profile = await fetchProfile(session.user.id);
-        setProfile(profile);
-      } else {
-        setProfile(null);
+      // Only update state if we're past the initial bootstrap phase
+      // This prevents race conditions where the listener updates state
+      // before hydrateSession finishes
+      if (isBootstrapComplete) {
+        setSession(session);
+        if (session) {
+          const profile = await fetchProfile(session.user.id);
+          setProfile(profile);
+        } else {
+          setProfile(null);
+        }
       }
     });
 
+    unsubscribe = subscription.subscription.unsubscribe;
+
+    // Start bootstrap
+    bootstrap();
+
     return () => {
-      subscription.subscription.unsubscribe();
+      unsubscribe?.();
     };
-  }, [hydrateSession, setProfile, setSession]);
+  }, [setProfile, setSession]);
 
   return { isBootstrapping };
 }

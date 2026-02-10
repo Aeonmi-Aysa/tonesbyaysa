@@ -1,0 +1,212 @@
+✅ FREE TRIAL SYSTEM - SETUP CHECKLIST
+
+═══════════════════════════════════════════════════════════════
+
+FILES CREATED/UPDATED:
+
+✅ src/screens/main/PricingScreen.tsx
+   - Added trial tier to pricing options
+   - New handleStartTrial() function
+   - Supabase import added
+   - Database sync after purchase
+
+✅ src/lib/trialManager.ts (NEW)
+   - checkTrialStatus()
+   - handleExpiredTrial()
+   - getTierWithTrialCheck()
+   - formatTrialTimeRemaining()
+   - getTrialMessage()
+
+✅ SUPABASE_TRIAL_MIGRATION.sql (NEW)
+   - Adds trial columns to profiles table
+   - Creates active_trials view
+   - Creates expired_trials view
+
+═══════════════════════════════════════════════════════════════
+
+SETUP STEPS (DO IN ORDER):
+
+STEP 1: Run Supabase Migration (REQUIRED)
+□ Go to Supabase Dashboard
+□ Select your project
+□ Click "SQL Editor"
+□ Create new query
+□ Copy entire SUPABASE_TRIAL_MIGRATION.sql file
+□ Paste into editor
+□ Click "Run" button
+□ Wait for success message
+
+This adds:
+✅ trial_started_at column
+✅ trial_ends_at column
+✅ subscription_tier column
+✅ subscription_status column
+✅ active_trials view
+✅ expired_trials view
+
+STEP 2: Update useAuthBootstrap (OPTIONAL)
+□ Open src/hooks/useAuthBootstrap.ts
+□ Add import: import { getTierWithTrialCheck } from '@/lib/trialManager';
+□ After loading profile, add trial check:
+   const tierWithTrial = await getTierWithTrialCheck(session.user.id);
+   const profileWithTier = { ...profile, subscription_tier: tierWithTrial };
+   setProfile(profileWithTier);
+
+This ensures trial status is checked on app startup.
+
+STEP 3: Verify Supabase Import
+□ Open src/screens/main/PricingScreen.tsx
+□ Check line 19 has: import { supabase } from '@/lib/supabaseClient';
+
+STEP 4: Rebuild App
+□ Run: expo start --clear
+□ Wait for build complete
+
+═══════════════════════════════════════════════════════════════
+
+TESTING (DO IN ORDER):
+
+TEST 1: Start Trial
+□ Create new test account
+□ Open pricing screen
+□ Should see 3 options:
+  □ 🎁 Try Free (7-Day Free Trial)
+  □ ✨ Weekly ($4.99/week)
+  □ 🏆 Lifetime ($69.99)
+□ Tap "Start Free Trial" button
+□ Should show loading indicator
+□ Should show: "🎉 Trial Started! You have 7 days..."
+□ Dashboard should show subscription: "WEEKLY"
+□ Check Supabase (Profiles table):
+  □ trial_started_at should have timestamp
+  □ trial_ends_at should be 7 days from now
+  □ subscription_tier should be "weekly"
+  □ subscription_status should be "active"
+
+TEST 2: Persistence After Restart
+□ Close app completely
+□ Reopen app
+□ Should still show "WEEKLY" subscription
+□ All 500+ frequencies should be playable
+□ Premium features should work (composer, baths, etc.)
+
+TEST 3: Log Out and Back In
+□ Go to Profile
+□ Tap "Sign Out"
+□ Log back in with same email
+□ Should still show "WEEKLY" subscription ✅
+□ Trial data persisted in database ✅
+
+TEST 4: Trial Already Used
+□ Fresh test account
+□ Start trial (TEST 1)
+□ Wait 7+ days (or manually set trial_ends_at to today in Supabase)
+□ Try to tap "Start Free Trial" again
+□ Should show: "⚠️ Trial Already Used"
+□ Should prevent re-use ✅
+
+TEST 5: Upgrade During Trial
+□ With active trial
+□ Tap "Subscribe Weekly" (not trial button)
+□ Complete purchase flow
+□ Should succeed
+□ Should convert to paid subscription
+□ Trial status should not matter
+
+═══════════════════════════════════════════════════════════════
+
+WHAT SHOULD HAPPEN:
+
+Trial Flow:
+1. User sees "🎁 Try Free" button prominently
+2. Taps it
+3. App records start date in Supabase
+4. User gets immediate access to "weekly" tier (all 500+ frequencies)
+5. App shows "WEEKLY" on dashboard
+6. Everything works as if paid
+7. After 7 days:
+   - App detects expiration
+   - Automatically downgrades to free
+   - User loses premium access
+   - User sees upgrade prompt
+
+User Benefits:
+✅ No credit card needed for trial
+✅ Full access to all premium features
+✅ 7 days to decide before commitment
+✅ Easy upgrade path to paid
+✅ Trial status persistent (survives app restart)
+
+═══════════════════════════════════════════════════════════════
+
+DATABASE COLUMNS ADDED:
+
+profiles table gets 4 new columns:
+
+trial_started_at (timestamp)
+  - When user started trial
+  - NULL if no trial started
+  - Example: 2026-01-17T14:30:00Z
+
+trial_ends_at (timestamp)
+  - When trial expires (always 7 days after start)
+  - NULL if no trial started
+  - Example: 2026-01-24T14:30:00Z
+
+subscription_tier (text)
+  - Current tier: 'free', 'weekly', 'lifetime'
+  - Trial users shown as 'weekly'
+  - Default: 'free'
+
+subscription_status (text)
+  - 'active' or 'inactive'
+  - Trial users: 'active'
+  - Expired users: 'inactive'
+  - Default: 'inactive'
+
+═══════════════════════════════════════════════════════════════
+
+MONITORING (Optional):
+
+In Supabase SQL Editor, check trial health:
+
+-- Count active trials
+SELECT COUNT(*) FROM active_trials;
+
+-- See users about to expire
+SELECT id, email, days_remaining FROM active_trials WHERE days_remaining <= 1;
+
+-- See expired trials
+SELECT id, email, days_expired FROM expired_trials;
+
+═══════════════════════════════════════════════════════════════
+
+ISSUES TO WATCH:
+
+⚠️ Migration not ran?
+   → You'll get "column trial_started_at not found" error
+   → Run SUPABASE_TRIAL_MIGRATION.sql
+
+⚠️ Trial doesn't persist on restart?
+   → useAuthBootstrap not updated
+   → Add getTierWithTrialCheck call
+
+⚠️ Can start trial multiple times?
+   → handleStartTrial not checking trial_started_at
+   → Check code for "if (currentProfile?.trial_started_at)"
+
+═══════════════════════════════════════════════════════════════
+
+READY TO DEPLOY ✅
+
+All systems in place:
+✅ Trial pricing screen
+✅ Database tracking
+✅ Automatic expiration
+✅ Persistence across restarts
+✅ One trial per user
+✅ Full premium access during trial
+
+Next: Run migration → Test → Deploy!
+
+═══════════════════════════════════════════════════════════════

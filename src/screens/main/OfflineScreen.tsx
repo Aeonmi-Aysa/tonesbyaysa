@@ -282,7 +282,7 @@ export function OfflineScreen() {
     <View style={styles.container}>
       <GradientView colors={['#1e1b4b', '#111827']} style={styles.header}>
         <Text style={styles.title}>Offline Mode</Text>
-        <Text style={styles.subtitle}>Use HealTone without internet</Text>
+        <Text style={styles.subtitle}>Use Tones by Aysa without internet</Text>
       </GradientView>
 
       {/* Storage Stats */}

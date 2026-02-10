@@ -33,7 +33,7 @@ const ENERGY_EMOJIS: Record<MoodRating, string> = {
 };
 
 const COMMON_TAGS = [
-  'Sleep', 'Focus', 'Meditation', 'Anxiety', 'Pain Relief',
+  'Sleep', 'Focus', 'Meditation', 'Calm', 'Comfort',
   'Morning', 'Evening', 'Work', 'Exercise', 'Relaxation'
 ];
 
@@ -378,7 +378,7 @@ export function JournalScreen() {
       <SafeAreaView style={styles.safe}>
         <View style={styles.header}>
           <Text style={styles.title}>📔 Frequency Journal</Text>
-          <Text style={styles.subtitle}>Track your healing journey</Text>
+          <Text style={styles.subtitle}>Track your wellness journey</Text>
         </View>
 
         {/* Tab Bar */}

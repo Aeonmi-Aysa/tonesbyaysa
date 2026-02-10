@@ -7,6 +7,7 @@ import { ManifestationScreen } from '@/screens/main/ManifestationScreen';
 import { ProfileScreen } from '@/screens/main/ProfileScreen';
 import { AdminScreen } from '@/screens/main/AdminScreen';
 import { useSessionStore, type SessionState } from '@/store/useSessionStore';
+import { useTheme } from '@/store/useThemeStore';
 import { useMemo } from 'react';
 
 export type MainTabParamList = {
@@ -22,6 +23,7 @@ const Tab = createBottomTabNavigator<MainTabParamList>();
 
 export function MainTabs() {
   const profile = useSessionStore((state: SessionState) => state.profile);
+  const { colors, isDark } = useTheme();
   const isAdmin = !!profile?.is_admin;
 
   const adminKey = useMemo(() => (isAdmin ? 'admin-enabled' : 'admin-disabled'), [isAdmin]);
@@ -35,9 +37,13 @@ export function MainTabs() {
       key={adminKey}
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: '#a855f7',
-        tabBarInactiveTintColor: '#94a3b8',
-        tabBarStyle: { backgroundColor: '#111827', borderTopColor: '#1f2937' }
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textMuted,
+        tabBarStyle: { 
+          backgroundColor: colors.surface, 
+          borderTopColor: colors.border,
+          borderTopWidth: 1,
+        }
       }}
     >
       <Tab.Screen

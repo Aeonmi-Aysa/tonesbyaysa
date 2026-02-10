@@ -1,10 +1,21 @@
-// Metro configuration that applies Expo defaults before wrapping the Audio API helper.
+// Metro configuration for HealTone app
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { getDefaultConfig } = require('@expo/metro-config');
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const { wrapWithAudioAPIMetroConfig } = require('react-native-audio-api/metro-config');
 
 /** @type {import('metro-config').MetroConfig} */
 const config = getDefaultConfig(__dirname);
 
-module.exports = wrapWithAudioAPIMetroConfig(config);
+// Enable source maps and better error reporting
+config.transformer = {
+  ...config.transformer,
+  minifierPath: 'metro-minify-terser',
+  minifierConfig: {
+    keep_classnames: true,
+    keep_fnames: true,
+    compress: {
+      drop_debugger: false,
+    },
+  },
+};
+
+module.exports = config;

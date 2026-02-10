@@ -286,7 +286,7 @@ export const useRemindersStore = create<RemindersState>()(
 export const REMINDER_PRESETS = [
   {
     title: '🌅 Morning Awakening',
-    body: 'Time for your morning frequency session. Start your day with healing vibrations!',
+    body: 'Time for your morning frequency session. Start your day with wellness vibrations!',
     defaultHour: 7,
     defaultMinute: 0,
     suggestedFrequency: 528, // Love frequency
@@ -310,7 +310,7 @@ export const REMINDER_PRESETS = [
     body: 'Prepare your mind and body for restorative sleep with deep frequencies.',
     defaultHour: 21,
     defaultMinute: 30,
-    suggestedFrequency: 174, // Foundation/Pain relief
+    suggestedFrequency: 174, // Foundation/Calm
   },
   {
     title: '✨ Manifestation Practice',

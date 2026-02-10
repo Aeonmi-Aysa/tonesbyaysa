@@ -90,7 +90,7 @@ const SAMPLE_COMMUNITY_PRESETS: CommunityPreset[] = [
   },
   {
     id: 'comm-2',
-    name: 'Anxiety Relief Blend',
+    name: 'Calm Support Blend',
     description: 'Gentle frequencies to calm anxious thoughts and promote inner peace.',
     category: 'relaxation',
     frequencies: [
@@ -99,11 +99,11 @@ const SAMPLE_COMMUNITY_PRESETS: CommunityPreset[] = [
       { hz: 10, name: 'Alpha Peace', volume: 0.5 }
     ],
     authorId: 'user-2',
-    authorName: 'HealingVibes',
+    authorName: 'WellnessVibes',
     likes: 456,
     downloads: 891,
     isPublic: true,
-    tags: ['anxiety', 'calm', 'peace'],
+    tags: ['calm', 'peace', 'relaxation'],
     createdAt: '2024-01-10T14:30:00Z',
     updatedAt: '2024-01-12T09:00:00Z'
   },
@@ -114,7 +114,7 @@ const SAMPLE_COMMUNITY_PRESETS: CommunityPreset[] = [
     category: 'sleep',
     frequencies: [
       { hz: 2.5, name: 'Deep Delta', volume: 0.8 },
-      { hz: 174, name: 'Pain Relief', volume: 0.4 },
+      { hz: 174, name: 'Calm Foundation', volume: 0.4 },
       { hz: 3.5, name: 'Delta Sleep', volume: 0.6 }
     ],
     authorId: 'user-3',
@@ -122,7 +122,7 @@ const SAMPLE_COMMUNITY_PRESETS: CommunityPreset[] = [
     likes: 789,
     downloads: 1234,
     isPublic: true,
-    tags: ['sleep', 'insomnia', 'rest'],
+    tags: ['sleep', 'rest', 'relaxation'],
     createdAt: '2024-01-08T22:00:00Z',
     updatedAt: '2024-01-08T22:00:00Z'
   },
@@ -166,20 +166,20 @@ const SAMPLE_COMMUNITY_PRESETS: CommunityPreset[] = [
   },
   {
     id: 'comm-6',
-    name: 'DNA Repair Protocol',
-    description: 'Sacred Solfeggio frequencies for cellular healing and DNA repair.',
+    name: 'DNA Harmony Protocol',
+    description: 'Sacred Solfeggio frequencies for cellular balance and harmony.',
     category: 'healing',
     frequencies: [
-      { hz: 528, name: 'DNA Repair', volume: 0.8 },
+      { hz: 528, name: 'DNA Harmony', volume: 0.8 },
       { hz: 174, name: 'Foundation', volume: 0.5 },
-      { hz: 285, name: 'Quantum Healing', volume: 0.6 }
+      { hz: 285, name: 'Quantum Balance', volume: 0.6 }
     ],
     authorId: 'user-6',
-    authorName: 'QuantumHealer',
+    authorName: 'QuantumWellness',
     likes: 567,
     downloads: 890,
     isPublic: true,
-    tags: ['healing', 'dna', 'solfeggio'],
+    tags: ['wellness', 'dna', 'solfeggio'],
     createdAt: '2024-01-11T11:11:00Z',
     updatedAt: '2024-01-11T11:11:00Z'
   },
@@ -363,7 +363,7 @@ export const CATEGORY_INFO: Record<CommunityPreset['category'], { label: string;
   relaxation: { label: 'Relaxation', icon: '🌊', color: '#06b6d4' },
   sleep: { label: 'Sleep', icon: '🌙', color: '#6366f1' },
   energy: { label: 'Energy', icon: '⚡', color: '#f59e0b' },
-  healing: { label: 'Healing', icon: '💚', color: '#10b981' },
+  healing: { label: 'Wellness', icon: '💚', color: '#10b981' },
   creativity: { label: 'Creativity', icon: '🎨', color: '#ec4899' },
   meditation: { label: 'Meditation', icon: '🧘', color: '#8b5cf6' },
   manifestation: { label: 'Manifestation', icon: '✨', color: '#f97316' },

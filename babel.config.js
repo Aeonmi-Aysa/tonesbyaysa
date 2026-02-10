@@ -13,6 +13,14 @@ module.exports = function (api) {
         }
       ],
       'react-native-reanimated/plugin'
+    ],
+    // Enable detailed error messages and stack traces
+    overrides: [
+      {
+        test: ['./src'],
+        compact: false,
+        sourceType: 'unambiguous'
+      }
     ]
   };
 };

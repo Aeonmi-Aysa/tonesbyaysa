@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View, Animated } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useSessionStore, type SessionState } from '@/store/useSessionStore';
 import { useFavoritesStore } from '@/store/useFavoritesStore';
+import { useTheme } from '@/store/useThemeStore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { stopAllFrequencies, playFrequencyBath } from '@/lib/audioEngine';
 import { FREQUENCY_BATHS, type FrequencyBath } from '@/lib/frequencies';
+import { stopAllFrequencies, playFrequencyBath } from '@/lib/audioEngineExpo';
 
 // Types
 interface Intention {
@@ -96,7 +98,7 @@ const ACHIEVEMENT_CATALOG: Achievement[] = [
 const INTENTION_CATEGORIES = [
   { key: 'abundance' as const, label: 'Abundance', emoji: '💰' },
   { key: 'love' as const, label: 'Love', emoji: '❤️' },
-  { key: 'health' as const, label: 'Health', emoji: '🌿' },
+  { key: 'health' as const, label: 'Wellness', emoji: '🌿' },
   { key: 'career' as const, label: 'Career', emoji: '🎯' },
   { key: 'spiritual' as const, label: 'Spiritual', emoji: '🧘' },
   { key: 'creativity' as const, label: 'Creative', emoji: '🎨' },
@@ -105,8 +107,8 @@ const INTENTION_CATEGORIES = [
 // Recommended frequencies per category
 const CATEGORY_RECOMMENDATIONS: Record<string, string[]> = {
   abundance: ['bath-abundance-flow', 'bath-infinite-prosperity', 'bath-opportunity-magnet'],
-  love: ['bath-self-love', 'bath-heart-opening', 'bath-emotional-healing'],
-  health: ['bath-rapid-recovery', 'bath-pain-dissolver', 'bath-immune-boost'],
+  love: ['bath-self-love', 'bath-heart-opening', 'bath-emotional-reset'],
+  wellness: ['bath-deep-restoration', 'bath-comfort-support', 'bath-vitality-support'],
   career: ['bath-focus', 'bath-logic-reasoning', 'bath-mental-clarity'],
   spiritual: ['bath-awakening-gateway', 'bath-quantum-creation', 'bath-chakra-alignment'],
   creativity: ['bath-quantum-creation', 'bath-inspiration-flow', 'bath-creative-spark']
@@ -117,6 +119,7 @@ const STORAGE_KEY = 'manifestation_state';
 export function ManifestationScreen() {
   const profile = useSessionStore((state: SessionState) => state.profile);
   const { addFavorite, isFavorite } = useFavoritesStore();
+  const { colors, isDark } = useTheme();
   
   // Core state
   const [state, setState] = useState<ManifestationState>({
@@ -156,6 +159,18 @@ export function ManifestationScreen() {
 
   // Load state on mount
   useEffect(() => {
+    // Stop any playing audio when entering manifestation screen
+    const cleanup = async () => {
+      try {
+        await stopAllFrequencies();
+        setPlayingBathId(null);
+        console.log('🧘 ManifestationScreen: Stopped any lingering audio');
+      } catch (error) {
+        console.error('Error stopping audio on mount:', error);
+      }
+    };
+    
+    cleanup();
     loadState();
     loadComposerBaths();
   }, [profile?.id]);
@@ -188,6 +203,15 @@ export function ManifestationScreen() {
       pulseAnim.setValue(1);
     }
   }, [isSessionActive, isPaused]);
+
+  // Stop audio when switching away from baths tab
+  useEffect(() => {
+    if (activeTab !== 'baths' && playingBathId) {
+      console.log('🧘 Stopping bath audio - switched away from baths tab');
+      stopAllFrequencies().catch(e => console.error('Failed to stop audio on tab switch:', e));
+      setPlayingBathId(null);
+    }
+  }, [activeTab, playingBathId]);
 
   const loadState = async () => {
     try {
@@ -230,6 +254,39 @@ export function ManifestationScreen() {
     }
   };
 
+  // BATH SYNC FIX: Refresh baths when screen regains focus
+  useFocusEffect(
+    useCallback(() => {
+      loadComposerBaths();
+    }, [profile?.id])
+  );
+
+  const deleteCustomBath = async (bathId: string) => {
+    Alert.alert(
+      'Delete Custom Bath',
+      'Are you sure you want to delete this custom bath?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const updated = composerBaths.filter(b => b.id !== bathId);
+              setComposerBaths(updated);
+              const key = profile?.id ? `customBaths:${profile.id}` : 'customBaths';
+              await AsyncStorage.setItem(key, JSON.stringify(updated));
+              console.log('🗑️ Custom bath deleted from Manifestation');
+            } catch (error) {
+              console.error('Failed to delete bath:', error);
+              Alert.alert('Error', 'Failed to delete bath');
+            }
+          }
+        }
+      ]
+    );
+  };
+
   // Set intention
   const setIntention = () => {
     if (!intentionTitle.trim()) {
@@ -259,18 +316,6 @@ export function ManifestationScreen() {
 
     saveState(newState);
     Alert.alert('✨ Intention Set!', `"${intentionTitle}" locked in. Your recommended frequencies have been updated.`);
-  };
-
-  // Check and unlock achievements
-  const checkAchievements = (stats: ManifestationStats, currentAchievements: Record<string, boolean>) => {
-    const updated = { ...currentAchievements };
-    ACHIEVEMENT_CATALOG.forEach(achievement => {
-      if (!updated[achievement.id] && achievement.check(stats, stats.intentions)) {
-        updated[achievement.id] = true;
-        Alert.alert('🏆 Achievement Unlocked!', `${achievement.icon} ${achievement.name}`);
-      }
-    });
-    return updated;
   };
 
   // Session management
@@ -304,54 +349,96 @@ export function ManifestationScreen() {
     }
   };
 
+  // Check achievements safely
+  const checkAchievements = (stats: ManifestationStats, currentAchievements: Record<string, boolean>) => {
+    const updated = { ...currentAchievements };
+    
+    ACHIEVEMENT_CATALOG.forEach(achievement => {
+      if (!updated[achievement.id]) {
+        try {
+          if (achievement.check(stats, state.stats.intentions)) {
+            updated[achievement.id] = true;
+            console.log('🏆 Achievement unlocked:', achievement.name);
+          }
+        } catch (error) {
+          console.error('Achievement check failed:', achievement.id, error);
+        }
+      }
+    });
+    
+    return updated;
+  };
+
   const stopSession = (markComplete = false) => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-    }
+    console.log('🧘 Stopping session, markComplete:', markComplete);
+    
+    try {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
 
-    const minutes = Math.max(1, Math.round(elapsedTime / 60000));
+      const minutes = Math.max(1, Math.round(elapsedTime / 60000));
 
-    if (markComplete && elapsedTime > 30000) { // At least 30 seconds
-      const newStats = {
-        ...state.stats,
-        sessions: state.stats.sessions + 1,
-        minutes: state.stats.minutes + minutes
-      };
-      
-      // Update streak
-      const today = new Date().toISOString().slice(0, 10);
-      if (state.lastSessionDate !== today) {
-        if (state.lastSessionDate) {
-          const prev = new Date(state.lastSessionDate);
-          const diff = Math.round((new Date(today).getTime() - prev.getTime()) / (1000 * 60 * 60 * 24));
-          if (diff === 1) {
-            newStats.streak = state.stats.streak + 1;
+      if (markComplete && elapsedTime > 30000) { // At least 30 seconds
+        console.log('🧘 Marking session as complete, duration:', minutes, 'minutes');
+        
+        const newStats = {
+          ...state.stats,
+          sessions: state.stats.sessions + 1,
+          minutes: state.stats.minutes + minutes
+        };
+        
+        // Update streak
+        const today = new Date().toISOString().slice(0, 10);
+        if (state.lastSessionDate !== today) {
+          if (state.lastSessionDate) {
+            const prev = new Date(state.lastSessionDate);
+            const diff = Math.round((new Date(today).getTime() - prev.getTime()) / (1000 * 60 * 60 * 24));
+            if (diff === 1) {
+              newStats.streak = state.stats.streak + 1;
+            } else {
+              newStats.streak = 1;
+            }
           } else {
             newStats.streak = 1;
           }
-        } else {
-          newStats.streak = 1;
         }
+
+        const newState = {
+          ...state,
+          stats: newStats,
+          lastSessionDate: today,
+          achievements: checkAchievements(newStats, state.achievements)
+        };
+
+        console.log('🧘 Saving session state:', newState);
+        saveState(newState);
+        
+        setTimeout(() => {
+          Alert.alert('🎉 Session Complete!', `${minutes} minutes of focused manifestation energy. Keep going!`);
+        }, 100);
       }
 
-      const newState = {
-        ...state,
-        stats: newStats,
-        lastSessionDate: today,
-        achievements: checkAchievements(newStats, state.achievements)
-      };
-
-      saveState(newState);
-      Alert.alert('🎉 Session Complete!', `${minutes} minutes of focused manifestation energy. Keep going!`);
+      // Stop audio and reset session state
+      stopAllFrequencies().catch(e => console.error('Stop audio failed:', e));
+      setPlayingBathId(null);
+      setIsSessionActive(false);
+      setIsPaused(false);
+      setSessionStartTime(null);
+      setElapsedTime(0);
+      setPausedOffset(0);
+      
+      console.log('🧘 Session stopped successfully');
+    } catch (error) {
+      console.error('❌ Session stop failed:', error);
+      // Force reset even if there's an error
+      setIsSessionActive(false);
+      setIsPaused(false);
+      setSessionStartTime(null);
+      setElapsedTime(0);
+      setPausedOffset(0);
+      Alert.alert('Session Stopped', 'Session ended with some issues, but progress was saved.');
     }
-
-    setIsSessionActive(false);
-    setIsPaused(false);
-    setSessionStartTime(null);
-    setElapsedTime(0);
-    setPausedOffset(0);
-    stopAllFrequencies();
-    setPlayingBathId(null);
   };
 
   // Format timer display
@@ -407,78 +494,87 @@ export function ManifestationScreen() {
     <View>
       {/* Current Intention Display */}
       {state.currentIntention && (
-        <View style={[styles.card, styles.intentionCard]}>
+        <View style={[styles.card, styles.intentionCard, { backgroundColor: colors.surface, borderColor: isDark ? '#fbbf24' : '#f59e0b' }]}>
           <View style={styles.intentionHeader}>
             <Text style={styles.intentionEmoji}>
               {INTENTION_CATEGORIES.find(c => c.key === state.currentIntention?.category)?.emoji}
             </Text>
             <View style={styles.intentionInfo}>
-              <Text style={styles.intentionTitle}>{state.currentIntention.title}</Text>
-              <Text style={styles.intentionCategory}>
+              <Text style={[styles.intentionTitle, { color: colors.accent }]}>{state.currentIntention.title}</Text>
+              <Text style={[styles.intentionCategory, { color: colors.textSecondary }]}>
                 {INTENTION_CATEGORIES.find(c => c.key === state.currentIntention?.category)?.label} • Intensity {state.currentIntention.intensity}/10
               </Text>
             </View>
           </View>
           {state.currentIntention.description ? (
-            <Text style={styles.intentionDescription}>{state.currentIntention.description}</Text>
+            <Text style={[styles.intentionDescription, { color: colors.textSecondary }]}>{state.currentIntention.description}</Text>
           ) : null}
         </View>
       )}
 
       {/* Intention Form */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>🎯 Set Your Intention</Text>
+      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <Text style={[styles.cardTitle, { color: colors.text }]}>🎯 Set Your Intention</Text>
         
-        <Text style={styles.inputLabel}>What do you want to manifest?</Text>
+        <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>What do you want to manifest?</Text>
         <TextInput
-          style={styles.textInput}
-          placeholder="e.g., Financial freedom, Perfect health..."
-          placeholderTextColor="#64748b"
+          style={[styles.textInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
+          placeholder="e.g., Financial freedom, Vibrant wellness..."
+          placeholderTextColor={colors.textMuted}
           value={intentionTitle}
           onChangeText={setIntentionTitle}
         />
 
-        <Text style={styles.inputLabel}>Category</Text>
+        <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Category</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll}>
           {INTENTION_CATEGORIES.map(cat => (
             <Pressable
               key={cat.key}
-              style={[styles.categoryBtn, intentionCategory === cat.key && styles.categoryBtnActive]}
+              style={[
+                styles.categoryBtn, 
+                { backgroundColor: intentionCategory === cat.key ? colors.primary : colors.background, borderColor: colors.border }
+              ]}
               onPress={() => setIntentionCategory(cat.key)}
             >
               <Text style={styles.categoryEmoji}>{cat.emoji}</Text>
-              <Text style={[styles.categoryLabel, intentionCategory === cat.key && styles.categoryLabelActive]}>
+              <Text style={[styles.categoryLabel, { color: intentionCategory === cat.key ? '#ffffff' : colors.textSecondary }]}>
                 {cat.label}
               </Text>
             </Pressable>
           ))}
         </ScrollView>
 
-        <Text style={styles.inputLabel}>Description (optional)</Text>
+        <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Description (optional)</Text>
         <TextInput
-          style={[styles.textInput, styles.textArea]}
+          style={[styles.textInput, styles.textArea, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
           placeholder="Describe your intention in detail..."
-          placeholderTextColor="#64748b"
+          placeholderTextColor={colors.textMuted}
           value={intentionDescription}
           onChangeText={setIntentionDescription}
           multiline
           numberOfLines={3}
         />
 
-        <Text style={styles.inputLabel}>Intensity: {intentionIntensity}/10</Text>
+        <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Intensity: {intentionIntensity}/10</Text>
         <View style={styles.intensityRow}>
           {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
             <Pressable
               key={n}
-              style={[styles.intensityBtn, intentionIntensity >= n && styles.intensityBtnActive]}
+              style={[
+                styles.intensityBtn, 
+                { 
+                  backgroundColor: intentionIntensity >= n ? colors.primary : colors.background,
+                  borderColor: colors.border,
+                }
+              ]}
               onPress={() => setIntensityValue(n)}
             >
-              <Text style={[styles.intensityText, intentionIntensity >= n && styles.intensityTextActive]}>{n}</Text>
+              <Text style={[styles.intensityText, { color: intentionIntensity >= n ? '#ffffff' : colors.textMuted }]}>{n}</Text>
             </Pressable>
           ))}
         </View>
 
-        <Pressable style={styles.setBtn} onPress={setIntention}>
+        <Pressable style={[styles.setBtn, { backgroundColor: colors.primary }]} onPress={setIntention}>
           <Text style={styles.setBtnText}>✨ Lock In Intention</Text>
         </Pressable>
       </View>
@@ -489,31 +585,39 @@ export function ManifestationScreen() {
   const renderSessionTab = () => (
     <View>
       {/* Timer Card */}
-      <Animated.View style={[styles.card, styles.timerCard, { transform: [{ scale: pulseAnim }] }]}>
-        <Text style={styles.timerLabel}>
+      <Animated.View style={[
+        styles.card, 
+        styles.timerCard, 
+        { 
+          backgroundColor: colors.surface, 
+          borderColor: isSessionActive ? (isDark ? '#10b981' : '#059669') : colors.border,
+          transform: [{ scale: pulseAnim }] 
+        }
+      ]}>
+        <Text style={[styles.timerLabel, { color: colors.textSecondary }]}>
           {isSessionActive 
             ? (isPaused ? '⏸️ Paused' : '🟢 Session Active') 
             : '⭕ Ready to Manifest'}
         </Text>
-        <Text style={styles.timerDisplay}>{formatTime(elapsedTime)}</Text>
+        <Text style={[styles.timerDisplay, { color: colors.text }]}>{formatTime(elapsedTime)}</Text>
         
         <View style={styles.timerButtons}>
           {!isSessionActive ? (
-            <Pressable style={styles.startBtn} onPress={startSession}>
+            <Pressable style={[styles.startBtn, { backgroundColor: '#10b981' }]} onPress={startSession}>
               <Text style={styles.startBtnText}>▶️ Start Session</Text>
             </Pressable>
           ) : (
             <>
               {isPaused ? (
-                <Pressable style={styles.resumeBtn} onPress={resumeSession}>
+                <Pressable style={[styles.resumeBtn, { backgroundColor: '#10b981' }]} onPress={resumeSession}>
                   <Text style={styles.resumeBtnText}>▶️ Resume</Text>
                 </Pressable>
               ) : (
-                <Pressable style={styles.pauseBtn} onPress={pauseSession}>
+                <Pressable style={[styles.pauseBtn, { backgroundColor: '#f59e0b' }]} onPress={pauseSession}>
                   <Text style={styles.pauseBtnText}>⏸️ Pause</Text>
                 </Pressable>
               )}
-              <Pressable style={styles.stopBtn} onPress={() => stopSession(true)}>
+              <Pressable style={[styles.stopBtn, { backgroundColor: colors.primary }]} onPress={() => stopSession(true)}>
                 <Text style={styles.stopBtnText}>⏹️ Complete</Text>
               </Pressable>
             </>
@@ -522,21 +626,21 @@ export function ManifestationScreen() {
       </Animated.View>
 
       {/* Session Tips */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>💡 Session Guide</Text>
-        <Text style={styles.tipItem}>• Find a quiet, comfortable space</Text>
-        <Text style={styles.tipItem}>• Use headphones for best experience</Text>
-        <Text style={styles.tipItem}>• Visualize your intention clearly</Text>
-        <Text style={styles.tipItem}>• Feel the emotions of achievement</Text>
-        <Text style={styles.tipItem}>• Breathe deeply and stay present</Text>
-        <Text style={styles.tipItem}>• Trust the process completely</Text>
+      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <Text style={[styles.cardTitle, { color: colors.text }]}>💡 Session Guide</Text>
+        <Text style={[styles.tipItem, { color: colors.textSecondary }]}>• Find a quiet, comfortable space</Text>
+        <Text style={[styles.tipItem, { color: colors.textSecondary }]}>• Use headphones for best experience</Text>
+        <Text style={[styles.tipItem, { color: colors.textSecondary }]}>• Visualize your intention clearly</Text>
+        <Text style={[styles.tipItem, { color: colors.textSecondary }]}>• Feel the emotions of achievement</Text>
+        <Text style={[styles.tipItem, { color: colors.textSecondary }]}>• Breathe deeply and stay present</Text>
+        <Text style={[styles.tipItem, { color: colors.textSecondary }]}>• Trust the process completely</Text>
       </View>
 
       {/* Current Intention Reminder */}
       {state.currentIntention && (
-        <View style={[styles.card, styles.reminderCard]}>
-          <Text style={styles.reminderLabel}>Current Focus:</Text>
-          <Text style={styles.reminderTitle}>{state.currentIntention.title}</Text>
+        <View style={[styles.card, styles.reminderCard, { backgroundColor: isDark ? '#1e1b4b' : '#ede9fe', borderColor: colors.primary }]}>
+          <Text style={[styles.reminderLabel, { color: colors.textSecondary }]}>Current Focus:</Text>
+          <Text style={[styles.reminderTitle, { color: colors.accent }]}>{state.currentIntention.title}</Text>
         </View>
       )}
     </View>
@@ -549,22 +653,22 @@ export function ManifestationScreen() {
     return (
       <View>
         {/* Recommended Baths */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>🎵 Recommended Frequencies</Text>
+        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[styles.cardTitle, { color: colors.text }]}>🎵 Recommended Frequencies</Text>
           {!state.currentIntention && (
-            <Text style={styles.emptyHint}>Set an intention to unlock personalized recommendations</Text>
+            <Text style={[styles.emptyHint, { color: colors.textMuted }]}>Set an intention to unlock personalized recommendations</Text>
           )}
           {recommendedBaths.map(bath => (
-            <View key={bath.id} style={styles.bathItem}>
+            <View key={bath.id} style={[styles.bathItem, { backgroundColor: colors.background, borderColor: colors.border }]}>
               <View style={styles.bathInfo}>
-                <Text style={styles.bathName}>{bath.name}</Text>
-                <Text style={styles.bathFreqs}>
+                <Text style={[styles.bathName, { color: colors.accent }]}>{bath.name}</Text>
+                <Text style={[styles.bathFreqs, { color: colors.primary }]}>
                   {bath.frequencies.map(f => `${f}Hz`).join(' + ')}
                 </Text>
               </View>
               <View style={styles.bathActions}>
                 <Pressable
-                  style={[styles.bathPlayBtn, playingBathId === bath.id && styles.bathPlayBtnActive]}
+                  style={[styles.bathPlayBtn, { backgroundColor: playingBathId === bath.id ? '#ef4444' : '#10b981' }]}
                   onPress={() => handlePlayBath(bath)}
                 >
                   <Text style={styles.bathPlayBtnText}>
@@ -572,7 +676,7 @@ export function ManifestationScreen() {
                   </Text>
                 </Pressable>
                 <Pressable
-                  style={styles.bathFavBtn}
+                  style={[styles.bathFavBtn, { backgroundColor: isDark ? '#374151' : '#e5e7eb' }]}
                   onPress={() => addFavorite(bath.id, 'bath', profile?.id)}
                 >
                   <Text style={styles.bathFavBtnText}>
@@ -586,46 +690,54 @@ export function ManifestationScreen() {
 
         {/* Composer Baths */}
         {composerBaths.length > 0 && (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>🎨 Your Custom Baths</Text>
-            <Text style={styles.cardSubtitle}>From Composer & Favorites</Text>
+          <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.cardTitle, { color: colors.text }]}>🎨 Your Custom Baths</Text>
+            <Text style={[styles.cardSubtitle, { color: colors.textSecondary }]}>From Composer & Favorites</Text>
             {composerBaths.map(bath => (
-              <View key={bath.id} style={styles.bathItem}>
+              <View key={bath.id} style={[styles.bathItem, { backgroundColor: colors.background, borderColor: colors.primary }]}>
                 <View style={styles.bathInfo}>
                   <View style={styles.bathNameRow}>
-                    <Text style={styles.bathName}>{bath.name}</Text>
-                    <View style={styles.customBadge}>
+                    <Text style={[styles.bathName, { color: colors.accent }]}>{bath.name}</Text>
+                    <View style={[styles.customBadge, { backgroundColor: colors.primary }]}>
                       <Text style={styles.customBadgeText}>Custom</Text>
                     </View>
                   </View>
-                  <Text style={styles.bathFreqs}>
+                  <Text style={[styles.bathFreqs, { color: colors.primary }]}>
                     {bath.layers.map(l => `${l.hz}Hz`).join(' + ')}
                   </Text>
                 </View>
-                <Pressable
-                  style={[styles.bathPlayBtn, playingBathId === bath.id && styles.bathPlayBtnActive]}
-                  onPress={() => handlePlayBath(bath)}
-                >
-                  <Text style={styles.bathPlayBtnText}>
-                    {playingBathId === bath.id ? '⏹️' : '▶️'}
-                  </Text>
-                </Pressable>
+                <View style={styles.bathActions}>
+                  <Pressable
+                    style={[styles.bathPlayBtn, { backgroundColor: playingBathId === bath.id ? '#ef4444' : '#10b981' }]}
+                    onPress={() => handlePlayBath(bath)}
+                  >
+                    <Text style={styles.bathPlayBtnText}>
+                      {playingBathId === bath.id ? '⏹️' : '▶️'}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.deleteBtn, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : 'rgba(239, 68, 68, 0.1)' }]}
+                    onPress={() => deleteCustomBath(bath.id)}
+                  >
+                    <Text style={styles.deleteBtnText}>🗑️</Text>
+                  </Pressable>
+                </View>
               </View>
             ))}
           </View>
         )}
 
         {/* Manifestation Category Baths */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>🌟 Manifestation Collection</Text>
+        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[styles.cardTitle, { color: colors.text }]}>🌟 Manifestation Collection</Text>
           {FREQUENCY_BATHS.filter(b => b.category === 'manifestation').slice(0, 8).map(bath => (
-            <View key={bath.id} style={styles.bathItem}>
+            <View key={bath.id} style={[styles.bathItem, { backgroundColor: colors.background, borderColor: colors.border }]}>
               <View style={styles.bathInfo}>
-                <Text style={styles.bathName}>{bath.name}</Text>
-                <Text style={styles.bathFreqs}>
+                <Text style={[styles.bathName, { color: colors.accent }]}>{bath.name}</Text>
+                <Text style={[styles.bathFreqs, { color: colors.primary }]}>
                   {bath.frequencies.map(f => `${f}Hz`).join(' + ')}
                 </Text>
-                <Text style={styles.bathDescription} numberOfLines={2}>
+                <Text style={[styles.bathDescription, { color: colors.textMuted }]} numberOfLines={2}>
                   {bath.description}
                 </Text>
               </View>
@@ -639,7 +751,7 @@ export function ManifestationScreen() {
                   </Text>
                 </Pressable>
                 <Pressable
-                  style={styles.bathFavBtn}
+                  style={[styles.bathFavBtn, { backgroundColor: isDark ? '#374151' : '#e5e7eb' }]}
                   onPress={() => addFavorite(bath.id, 'bath', profile?.id)}
                 >
                   <Text style={styles.bathFavBtnText}>
@@ -658,41 +770,47 @@ export function ManifestationScreen() {
   const renderProgressTab = () => (
     <View>
       {/* Stats Overview */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>📊 Your Journey</Text>
+      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <Text style={[styles.cardTitle, { color: colors.text }]}>📊 Your Journey</Text>
         <View style={styles.statsGrid}>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>{state.stats.sessions}</Text>
-            <Text style={styles.statLabel}>Sessions</Text>
+          <View style={[styles.statItem, { backgroundColor: colors.background, borderColor: colors.border }]}>
+            <Text style={[styles.statValue, { color: colors.primary }]}>{state.stats.sessions}</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Sessions</Text>
           </View>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>{state.stats.minutes}</Text>
-            <Text style={styles.statLabel}>Minutes</Text>
+          <View style={[styles.statItem, { backgroundColor: colors.background, borderColor: colors.border }]}>
+            <Text style={[styles.statValue, { color: colors.primary }]}>{state.stats.minutes}</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Minutes</Text>
           </View>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>{state.stats.streak}</Text>
-            <Text style={styles.statLabel}>Day Streak</Text>
+          <View style={[styles.statItem, { backgroundColor: colors.background, borderColor: colors.border }]}>
+            <Text style={[styles.statValue, { color: colors.primary }]}>{state.stats.streak}</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Day Streak</Text>
           </View>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>{state.stats.intentions}</Text>
-            <Text style={styles.statLabel}>Intentions</Text>
+          <View style={[styles.statItem, { backgroundColor: colors.background, borderColor: colors.border }]}>
+            <Text style={[styles.statValue, { color: colors.primary }]}>{state.stats.intentions}</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Intentions</Text>
           </View>
         </View>
       </View>
 
       {/* Achievements */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>🏆 Achievements</Text>
+      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <Text style={[styles.cardTitle, { color: colors.text }]}>🏆 Achievements</Text>
         <View style={styles.achievementsGrid}>
           {ACHIEVEMENT_CATALOG.map(achievement => {
             const unlocked = state.achievements[achievement.id];
             return (
-              <View key={achievement.id} style={[styles.achievementItem, unlocked && styles.achievementUnlocked]}>
+              <View key={achievement.id} style={[
+                styles.achievementItem, 
+                { 
+                  backgroundColor: unlocked ? (isDark ? 'rgba(139, 92, 246, 0.2)' : 'rgba(139, 92, 246, 0.15)') : colors.background,
+                  borderColor: unlocked ? colors.primary : colors.border,
+                }
+              ]}>
                 <Text style={styles.achievementIcon}>{achievement.icon}</Text>
-                <Text style={[styles.achievementName, unlocked && styles.achievementNameUnlocked]}>
+                <Text style={[styles.achievementName, { color: unlocked ? colors.primary : colors.textMuted }]}>
                   {achievement.name}
                 </Text>
-                <Text style={styles.achievementDesc}>{achievement.description}</Text>
+                <Text style={[styles.achievementDesc, { color: colors.textMuted }]}>{achievement.description}</Text>
               </View>
             );
           })}
@@ -700,24 +818,24 @@ export function ManifestationScreen() {
       </View>
 
       {/* Motivation */}
-      <View style={[styles.card, styles.motivationCard]}>
-        <Text style={styles.motivationQuote}>
+      <View style={[styles.card, styles.motivationCard, { backgroundColor: isDark ? '#1e1b4b' : '#ede9fe', borderColor: colors.primary }]}>
+        <Text style={[styles.motivationQuote, { color: colors.text }]}>
           "Your thoughts become things. Choose the good ones."
         </Text>
-        <Text style={styles.motivationAuthor}>— Mike Dooley</Text>
+        <Text style={[styles.motivationAuthor, { color: colors.textSecondary }]}>— Mike Dooley</Text>
       </View>
     </View>
   );
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
-        <Text style={styles.heading}>Manifestation Hub</Text>
-        <Text style={styles.subheading}>Program your reality with intention</Text>
+        <Text style={[styles.heading, { color: colors.accent }]}>Manifestation Hub</Text>
+        <Text style={[styles.subheading, { color: isDark ? '#fef3c7' : '#92400e' }]}>Program your reality with intention</Text>
       </View>
 
       {/* Tab Navigation */}
-      <View style={styles.tabBar}>
+      <View style={[styles.tabBar, { backgroundColor: colors.surface }]}>
         {[
           { key: 'intention' as const, label: '🎯 Intent' },
           { key: 'session' as const, label: '⏱️ Session' },
@@ -726,10 +844,10 @@ export function ManifestationScreen() {
         ].map(tab => (
           <Pressable
             key={tab.key}
-            style={[styles.tab, activeTab === tab.key && styles.tabActive]}
+            style={[styles.tab, activeTab === tab.key && { backgroundColor: colors.primary }]}
             onPress={() => setActiveTab(tab.key)}
           >
-            <Text style={[styles.tabText, activeTab === tab.key && styles.tabTextActive]}>
+            <Text style={[styles.tabText, { color: activeTab === tab.key ? '#ffffff' : colors.textSecondary }]}>
               {tab.label}
             </Text>
           </Pressable>
@@ -1081,6 +1199,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   bathFavBtnText: {
+    fontSize: 18,
+  },
+  deleteBtn: {
+    borderRadius: 10,
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteBtnText: {
     fontSize: 18,
   },
   emptyHint: {

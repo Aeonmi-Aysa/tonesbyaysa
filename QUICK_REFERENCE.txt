@@ -1,0 +1,135 @@
+# ⚡ QUICK REFERENCE - PAYWALL FIX
+
+## What Was Fixed
+- ❌ Empty product IDs causing crashes → ✅ Fixed
+- ❌ No error handling → ✅ Added retry logic
+- ❌ Confusing UI states → ✅ Simplified
+- ❌ Google Sign-In missing → ✅ Created setup
+
+## New Files
+```
+src/lib/revenueCatSetup.ts       (RevenueCat API)
+src/lib/paymentManager.ts        (Purchase API)
+src/lib/googleAuthSetup.ts       (Google Sign-In)
+```
+
+## Updated Files
+```
+App.tsx                (RevenueCat init)
+app.config.ts          (RevenueCat plugin)
+PaywallScreen.tsx      (Better errors)
+PricingScreen.tsx      (Better errors)
+```
+
+## API Keys Needed
+```env
+REVENUECAT_API_KEY=pk_prod_...
+GOOGLE_OAUTH_WEB_CLIENT_ID=...
+GOOGLE_OAUTH_ANDROID_CLIENT_ID=...
+GOOGLE_OAUTH_IOS_CLIENT_ID=...
+STRIPE_PUBLISHABLE_KEY=pk_live_...
+SUPABASE_URL=...
+SUPABASE_ANON_KEY=...
+```
+
+## 5-Minute Setup
+1. Get API keys (5 min) → `ENV_VARIABLES_SETUP_GUIDE.md`
+2. Update .env file (2 min)
+3. Verify RevenueCat products exist (3 min)
+4. Run `expo start --clear` (1 min)
+5. Test Paywall screen ✅
+
+## Testing
+```
+expo start --clear
+Navigate to Paywall/Pricing
+See products → Tap to purchase → Tier updates
+```
+
+## Key Functions to Use
+
+### Payment Manager
+```typescript
+import { purchaseSubscription, syncSubscriptionStatus } from '@/lib/paymentManager';
+
+// Purchase a tier
+const result = await purchaseSubscription('weekly');
+
+// Check subscription status
+const tier = await syncSubscriptionStatus(profile, updateProfile);
+
+// Check feature access
+import { hasFeatureAccess } from '@/lib/paymentManager';
+if (hasFeatureAccess(tier, 'premium')) {
+  // Show premium features
+}
+```
+
+### RevenueCat
+```typescript
+import { checkSubscriptionStatus, getOfferingsWithRetry } from '@/lib/revenueCatSetup';
+
+// Check status
+const status = await checkSubscriptionStatus();
+
+// Get offerings
+const offerings = await getOfferingsWithRetry();
+```
+
+### Google Auth (Optional)
+```typescript
+import { initializeGoogleSignIn, signInWithGoogle } from '@/lib/googleAuthSetup';
+
+// Initialize
+await initializeGoogleSignIn();
+
+// Sign in
+const result = await signInWithGoogle();
+```
+
+## Troubleshooting
+
+| Problem | Check |
+|---------|-------|
+| Products not showing | RevenueCat Dashboard → Products linked? |
+| Purchase fails | Stripe webhooks configured? |
+| Google blank | All 3 OAuth IDs in .env? |
+| App crashes | Check device logs |
+
+## Important Files to Read
+1. `PAYWALL_PAYMENT_FIX_SUMMARY.md` - Full overview
+2. `ENV_VARIABLES_SETUP_GUIDE.md` - API key locations
+3. `GOOGLE_AUTH_INTEGRATION_GUIDE.md` - Google setup (optional)
+
+## Quick Commands
+```bash
+# Start app clean
+expo start --clear
+
+# Check logs
+expo logs -c
+
+# Run on Android
+expo start --android
+
+# Run on iOS
+expo start --ios
+```
+
+## Tiers Available
+```
+Weekly:  $4.99/week  (Product: aysa_weekly_subscription)
+Lifetime: $69.99     (Product: aysa_lifetime_access)
+```
+
+## Entitlements
+```
+Weekly Tier → "Aysa Pro" entitlement
+Lifetime Tier → "Aysa Lifetime" entitlement
+```
+
+---
+
+**Status: ✅ Ready to test**
+**Next: Get API keys and update .env**
+**Time to working: ~15 minutes**
