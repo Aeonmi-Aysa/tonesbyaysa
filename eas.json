@@ -9,7 +9,8 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk",
-        "credentialsSource": "remote"
+        "credentialsSource": "remote",
+        "versionCode": 2
       },
       "env": {
         "SUPABASE_URL": "https://qdnijmpcedgrpalnlojp.supabase.co",
@@ -47,7 +48,8 @@
       "android": {
         "buildType": "app-bundle",
         "credentialsSource": "remote",
-        "image": "latest"
+        "image": "latest",
+        "versionCode": 2
       },
       "env": {
         "SUPABASE_URL": "https://qdnijmpcedgrpalnlojp.supabase.co",

@@ -1,10 +1,9 @@
-import 'dotenv/config';
 import type { ExpoConfig } from '@expo/config';
 const config: ExpoConfig = {
   name: 'Tones by Aysa',
   slug: 'healtoneapp',
   owner: 'darkmetaai',
-  version: '1.0.0',
+  version: '1.0.1',
   orientation: 'portrait',
   icon: './assets/icon.png',
   // Dark-only experience to match brand and in-app styling
@@ -20,7 +19,7 @@ const config: ExpoConfig = {
   },
   android: {
     package: 'com.aysa.tones',
-    versionCode: 1,
+    versionCode: 2,
     adaptiveIcon: {
       foregroundImage: './assets/adaptive-icon.png',
       backgroundColor: '#0a0a0f'
