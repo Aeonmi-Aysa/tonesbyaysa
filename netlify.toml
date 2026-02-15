@@ -1,0 +1,32 @@
+[build]
+  base = "browser"
+  publish = "browser"
+  command = "node browser/scripts/inject-env.js"
+  ignore = "git diff --quiet HEAD^ HEAD mobile/"
+
+[build.environment]
+  NODE_VERSION = "18"
+
+[functions]
+  node_bundler = "esbuild"
+  directory = "browser/netlify/functions"
+
+[[redirects]]
+  from = "/"
+  to = "/login.html"
+  status = 302
+  force = true
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+[[headers]]
+  for = "/.netlify/functions/*"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Headers = "Content-Type, stripe-signature"
+    Access-Control-Allow-Methods = "POST, OPTIONS"
