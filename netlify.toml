@@ -1,15 +1,14 @@
 [build]
   base = "browser"
-  publish = "browser"
-  command = "node browser/scripts/inject-env.js"
-  ignore = "git diff --quiet HEAD^ HEAD mobile/"
+  publish = "."
+  command = "node scripts/inject-env.js"
 
 [build.environment]
   NODE_VERSION = "18"
 
 [functions]
   node_bundler = "esbuild"
-  directory = "browser/netlify/functions"
+  directory = "netlify/functions"
 
 [[redirects]]
   from = "/"
